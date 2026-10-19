@@ -17,7 +17,7 @@ gh pr list --repo PrefectHQ/fastmcp --state all --search "<issue-number> in:body
   --json number,title,state,author
 ```
 
-Pick work with concrete user impact, a supported contract being violated, and a tractable causal fix. Do not rank solely by recency, comment count, or how small a proposed patch looks. Automated dashboard churn is not itself useful work.
+Pick work with concrete user impact, a supported contract being violated, a tractable causal fix, and a change FastMCP wants to carry. Apply [review-pr](../review-pr/SKILL.md)'s want check to every pick, and mark each one want / marginal / don't want. Do not rank solely by recency, comment count, or how small a proposed patch looks. Automated dashboard churn is not itself useful work.
 
 For promising candidates:
 
