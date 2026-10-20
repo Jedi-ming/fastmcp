@@ -59,7 +59,7 @@ if TYPE_CHECKING:
         GetToolNext,
         Transform,
     )
-    from fastmcp.skills._source import _SkillSource
+    from fastmcp.skills.source import _SkillSource
     from fastmcp.tools.base import Tool
 
 

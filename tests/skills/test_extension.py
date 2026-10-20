@@ -22,7 +22,6 @@ from fastmcp.server.providers import Provider
 from fastmcp.server.transforms import Namespace
 from fastmcp.skills import Skill, SkillsClientExtension
 from fastmcp.skills._constants import SKILLS_EXTENSION_ID
-from fastmcp.skills._source import _Catalog, _Lookup, _SkillSource
 from fastmcp.skills.extension import SkillsExtension
 from fastmcp.skills.models import (
     GetSkillParams,
@@ -31,6 +30,7 @@ from fastmcp.skills.models import (
     ListSkillsParams,
     ListSkillsResult,
 )
+from fastmcp.skills.source import SkillSource
 from fastmcp.utilities.versions import VersionSpec
 
 SKILL_CONTENT = "# Review\n"
@@ -50,7 +50,7 @@ def make_skill(name: str) -> Skill:
     )
 
 
-class MemorySkillProvider(Provider, _SkillSource):
+class MemorySkillProvider(Provider, SkillSource):
     def __init__(
         self,
         *,
@@ -63,20 +63,15 @@ class MemorySkillProvider(Provider, _SkillSource):
             skill.uri: skill
             for skill in (addressable if addressable is not None else listed)
         }
-        self.contexts: list[ServerRequestContext[Any, Any]] = []
+        self.calls: list[str] = []
 
-    async def _list_skill_entries(
-        self, context: ServerRequestContext[Any, Any]
-    ) -> _Catalog:
-        self.contexts.append(context)
-        return _Catalog(self.listed, tuple(self.addressable))
+    async def list_skills(self) -> Sequence[Skill]:
+        self.calls.append("list")
+        return self.listed
 
-    async def _get_skill_entry(
-        self, uri: str, context: ServerRequestContext[Any, Any]
-    ) -> _Lookup:
-        self.contexts.append(context)
-        skill = self.addressable.get(uri)
-        return _Lookup(matches=int(skill is not None), skill=skill)
+    async def get_skill(self, uri: str) -> Skill | None:
+        self.calls.append("get")
+        return self.addressable.get(uri)
 
     async def _get_resource(
         self, uri: str, version: VersionSpec | None = None
@@ -188,9 +183,9 @@ async def test_get_skill_is_authoritative_for_unlisted_skill() -> None:
     assert skill.resources[0].digest == (
         f"sha256:{hashlib.sha256(payload).hexdigest()}"
     )
-    assert [context.method for context in provider.contexts] == [
-        "skills/list",
-        "skills/get",
+    assert provider.calls == [
+        "list",
+        "get",
     ]
 
 
@@ -229,10 +224,10 @@ async def test_skill_client_cache_serves_list_and_keys_get_by_uri() -> None:
     assert first_alpha == cached_alpha == alpha
     assert fetched_beta == beta
 
-    assert [context.method for context in provider.contexts] == [
-        "skills/list",
-        "skills/get",
-        "skills/get",
+    assert provider.calls == [
+        "list",
+        "get",
+        "get",
     ]
 
 
@@ -251,9 +246,9 @@ async def test_skill_client_cache_mode_bypass_reaches_server() -> None:
         await client.get_skill(skill.uri)
         await client.get_skill(skill.uri, cache_mode="bypass")
 
-    assert [context.method for context in provider.contexts] == [
-        "skills/get",
-        "skills/get",
+    assert provider.calls == [
+        "get",
+        "get",
     ]
 
 

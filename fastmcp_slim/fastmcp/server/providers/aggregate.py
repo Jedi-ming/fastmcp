@@ -39,7 +39,7 @@ if TYPE_CHECKING:
     from fastmcp.resources.template import ResourceTemplate
     from fastmcp.server.extensions import ServerExtension
     from fastmcp.server.server import FastMCP
-    from fastmcp.skills._source import _SkillSource
+    from fastmcp.skills.source import _SkillSource
     from fastmcp.tools.base import Tool
 
 logger = logging.getLogger(__name__)

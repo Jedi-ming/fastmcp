@@ -28,7 +28,7 @@ from fastmcp.utilities.versions import VersionSpec
 if TYPE_CHECKING:
     from fastmcp.server.extensions import ServerExtension
     from fastmcp.server.server import FastMCP
-    from fastmcp.skills._source import _SkillSource
+    from fastmcp.skills.source import _SkillSource
 
 
 # -----------------------------------------------------------------------------

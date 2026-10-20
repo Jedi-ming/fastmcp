@@ -26,8 +26,8 @@ from fastmcp.server.providers.skills.skill_provider import (
 )
 from fastmcp.skills._resources import is_skill_file
 from fastmcp.skills._snapshot import Snapshot, snapshot
-from fastmcp.skills._source import _Catalog, _Lookup, _SkillSource
 from fastmcp.skills.models import Skill
+from fastmcp.skills.source import _Catalog, _Lookup, _SkillSource
 from fastmcp.utilities.logging import get_logger
 from fastmcp.utilities.versions import VersionSpec
 
