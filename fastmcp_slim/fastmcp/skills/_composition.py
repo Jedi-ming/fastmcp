@@ -16,8 +16,8 @@ from fastmcp.resources.base import Resource
 from fastmcp.resources.template import ResourceTemplate
 from fastmcp.server.context import Context
 from fastmcp.server.transforms import Namespace, Visibility
+from fastmcp.skills._source import _Catalog, _Lookup, _manifest_uris, _SkillSource
 from fastmcp.skills.models import Skill
-from fastmcp.skills.source import _Catalog, _Lookup, _manifest_uris, _SkillSource
 from fastmcp.utilities.async_utils import gather
 from fastmcp.utilities.logging import get_logger
 

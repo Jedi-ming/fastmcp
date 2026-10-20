@@ -15,13 +15,13 @@ from fastmcp.server.mixins.mcp_operations import _apply_pagination
 from fastmcp.server.providers.base import Provider
 from fastmcp.skills._composition import _AggregateSkills, _ServerSkills
 from fastmcp.skills._constants import SKILLS_EXTENSION_ID
+from fastmcp.skills._source import _SkillSource
 from fastmcp.skills.models import (
     GetSkillParams,
     GetSkillResult,
     ListSkillsParams,
     ListSkillsResult,
 )
-from fastmcp.skills.source import _SkillSource
 
 if TYPE_CHECKING:
     from fastmcp.server.server import FastMCP
@@ -64,7 +64,7 @@ class SkillsExtension(ServerExtension):
             if not isinstance(provider, _SkillSource):
                 raise TypeError(
                     f"{type(provider).__name__} is not a SkillsExtension source; "
-                    "implement fastmcp.skills.source.SkillSource"
+                    "subclass SkillFilesProvider to publish skills from loaded files"
                 )
             provider._validate_skill_source()
             sources.append(provider)

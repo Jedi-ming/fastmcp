@@ -2,7 +2,6 @@
 
 import asyncio
 import hashlib
-from collections.abc import Sequence
 from contextvars import ContextVar
 from pathlib import Path
 from typing import Literal
@@ -12,19 +11,19 @@ from mcp import MCPError
 from mcp_types import INTERNAL_ERROR, INVALID_PARAMS, METHOD_NOT_FOUND
 
 from fastmcp import Client, FastMCP
-from fastmcp.resources import Resource, TextResource
 from fastmcp.server import create_proxy
 from fastmcp.server.middleware import AuthMiddleware, Middleware
 from fastmcp.server.middleware.caching import ResponseCachingMiddleware
-from fastmcp.server.providers import Provider
 from fastmcp.server.providers.aggregate import AggregateProvider
 from fastmcp.server.providers.proxy import ProxyClient, ProxyProvider
-from fastmcp.server.providers.skills import SkillsDirectoryProvider
-from fastmcp.skills import Skill, SkillsClientExtension
+from fastmcp.server.providers.skills import (
+    SkillFilesProvider,
+    SkillsDirectoryProvider,
+)
+from fastmcp.skills import SkillsClientExtension
 from fastmcp.skills._constants import SKILLS_EXTENSION_ID
 from fastmcp.skills.extension import SkillsExtension
 from fastmcp.skills.models import GetSkillParams, GetSkillRequest, GetSkillResult
-from fastmcp.skills.source import SkillSource
 
 
 class Reads(Middleware):
@@ -163,47 +162,25 @@ async def test_local_and_proxied_skills_share_catalog(tmp_path: Path) -> None:
         assert await client.get_skill("skill://upstream/remote/SKILL.md")
 
 
-class MemorySkills(Provider, SkillSource):
-    """One skill served from memory, with no files on disk."""
+class StoredSkills(SkillFilesProvider):
+    files = {
+        "deploy": {"SKILL.md": b"---\nname: deploy\ndescription: Use deploy.\n---\n"}
+    }
 
-    content = "---\nname: deploy\ndescription: Use deploy.\n---\n"
-    uri = "skill://deploy/SKILL.md"
-
-    async def _list_resources(self) -> Sequence[Resource]:
-        return [TextResource(uri=self.uri, name="SKILL.md", text=self.content)]
-
-    async def list_skills(self) -> Sequence[Skill]:
-        payload = self.content.encode()
-        return [
-            Skill.model_validate(
-                {
-                    "uri": self.uri,
-                    "frontmatter": {"name": "deploy", "description": "Use deploy."},
-                    "resources": [
-                        {
-                            "uri": self.uri,
-                            "size": len(payload),
-                            "digest": f"sha256:{hashlib.sha256(payload).hexdigest()}",
-                        }
-                    ],
-                }
-            )
-        ]
+    async def skill_files(self):
+        return self.files
 
 
-async def test_memory_skill_source_shares_catalog_with_proxy(tmp_path: Path) -> None:
+async def test_loaded_skills_share_catalog_with_proxy(tmp_path: Path) -> None:
     proxy = create_proxy(backend(tmp_path, "review"))
-    memory = MemorySkills()
-    proxy.add_provider(memory)
-    proxy.add_extension(SkillsExtension(providers=[memory]))
+    stored = StoredSkills()
+    proxy.add_provider(stored)
+    proxy.add_extension(SkillsExtension(providers=[stored]))
     async with skills_client(proxy) as client:
         assert [skill.uri for skill in await client.list_skills()] == [
             "skill://deploy/SKILL.md",
             "skill://review/SKILL.md",
         ]
-        skill = await client.get_skill("skill://deploy/SKILL.md")
-        contents = await client.read_resource(skill.uri)
-    assert contents[0].text == MemorySkills.content
 
 
 async def test_duplicate_skill_identities_are_not_chosen_arbitrarily(

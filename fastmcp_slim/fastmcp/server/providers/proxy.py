@@ -73,7 +73,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from fastmcp.client.transports import ClientTransport
-    from fastmcp.skills.source import _SkillSource
+    from fastmcp.skills._source import _SkillSource
 
 logger = get_logger(__name__)
 

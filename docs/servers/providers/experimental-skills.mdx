@@ -46,22 +46,16 @@ The default `supporting_files="template"` exposes the main files and existing sy
 
 ## Publish skills from other sources
 
-Skills don't have to live on disk. A database, an object store, or a registry service can publish them by implementing `SkillSource` on a [custom provider](/servers/providers/custom). The provider serves each skill file as an ordinary resource, and `list_skills()` returns the discovery entries that describe those files. `SkillsExtension` combines these entries with every other registered source and with [proxied backends](/servers/providers/proxy#skills), and applies the same visibility and permission checks.
-
-Each entry's manifest lists the URI, byte size, and SHA-256 digest of every file in the skill. FastMCP hides an entry when any listed file is missing from the server or unreadable by the caller, and clients reject files whose bytes don't match the manifest. Build each entry from the same bytes the provider serves.
+Skills don't have to live on disk. A database, an object store, or a registry service can publish them by subclassing `SkillFilesProvider` and returning each skill's files from `skill_files()`. FastMCP serves every file as a resource and builds the discovery entry, including the frontmatter, byte sizes, and SHA-256 digests, from those same bytes, so the manifest always describes what clients read. Skills go through the same validation as filesystem skills.
 
 ```python
-import hashlib
-from collections.abc import Sequence
+from collections.abc import Mapping
 
 from fastmcp import FastMCP
-from fastmcp.resources import Resource, TextResource
-from fastmcp.server.providers import Provider
-from fastmcp.skills import Skill
+from fastmcp.server.providers.skills import SkillFilesProvider
 from fastmcp.skills.extension import SkillsExtension
-from fastmcp.skills.source import SkillSource
 
-DEPLOY = """---
+DEPLOY = b"""---
 name: deploy
 description: Deploy the service to production.
 ---
@@ -70,42 +64,18 @@ Run the release checklist before deploying.
 """
 
 
-class CatalogSkills(Provider, SkillSource):
-    def __init__(self, files: dict[str, str]) -> None:
-        super().__init__()
-        self.files = files
-
-    async def _list_resources(self) -> Sequence[Resource]:
-        return [
-            TextResource(uri=uri, name=uri, text=text)
-            for uri, text in self.files.items()
-        ]
-
-    async def list_skills(self) -> Sequence[Skill]:
-        uri = "skill://deploy/SKILL.md"
-        payload = self.files[uri].encode()
-        manifest = [
-            {
-                "uri": uri,
-                "size": len(payload),
-                "digest": f"sha256:{hashlib.sha256(payload).hexdigest()}",
-            }
-        ]
-        frontmatter = {
-            "name": "deploy",
-            "description": "Deploy the service to production.",
-        }
-        entry = {"uri": uri, "frontmatter": frontmatter, "resources": manifest}
-        return [Skill.model_validate(entry)]
+class StoredSkills(SkillFilesProvider):
+    async def skill_files(self) -> Mapping[str, Mapping[str, bytes]]:
+        return {"deploy": {"SKILL.md": DEPLOY}}
 
 
 mcp = FastMCP("Skills")
-catalog = CatalogSkills({"skill://deploy/SKILL.md": DEPLOY})
-mcp.add_provider(catalog)
-mcp.add_extension(SkillsExtension(providers=[catalog]))
+stored = StoredSkills()
+mcp.add_provider(stored)
+mcp.add_extension(SkillsExtension(providers=[stored]))
 ```
 
-`get_skill(uri)` searches `list_skills()` by default. Override it to look up one entry without listing the whole catalog, or to serve entries that `list_skills()` does not advertise. Both methods run on every Skills request, so use `get_context()` when entries depend on the caller.
+The outer keys are skill paths and the inner keys are paths within the skill, so `{"team/deploy": {"SKILL.md": ...}}` publishes `skill://team/deploy/SKILL.md`. `SkillsExtension` combines these skills with every other registered source and with [proxied backends](/servers/providers/proxy#skills). FastMCP calls `skill_files()` for every list, lookup, and read, so cache the result when loading is expensive, and use `get_context()` when the skills depend on the caller.
 
 ## Discover and read
 

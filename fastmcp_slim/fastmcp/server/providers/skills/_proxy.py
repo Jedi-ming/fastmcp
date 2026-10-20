@@ -20,6 +20,7 @@ from fastmcp.server.providers.proxy import (
     _session_request_meta,
 )
 from fastmcp.skills._constants import SKILLS_EXTENSION_ID
+from fastmcp.skills._source import _Catalog, _Lookup, _SkillSource
 from fastmcp.skills.models import (
     GetSkillParams,
     GetSkillRequest,
@@ -29,7 +30,6 @@ from fastmcp.skills.models import (
     ListSkillsResult,
     Skill,
 )
-from fastmcp.skills.source import _Catalog, _Lookup, _SkillSource
 
 if TYPE_CHECKING:
     from fastmcp.server.providers.proxy import ProxyProvider
