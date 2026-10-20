@@ -17,13 +17,14 @@ from fastmcp.resources.base import Resource
 from fastmcp.resources.template import ResourceTemplate
 from fastmcp.server.dependencies import get_context
 from fastmcp.server.providers.aggregate import AggregateProvider
-from fastmcp.server.providers.skills._common import SkillInfo
+from fastmcp.server.providers.skills._common import SkillInfo, scan_skill_files
 from fastmcp.server.providers.skills.skill_provider import (
     SkillFileResource,
     SkillFileTemplate,
     SkillProvider,
     SkillResource,
 )
+from fastmcp.skills._resources import is_skill_file
 from fastmcp.skills._snapshot import Snapshot, snapshot
 from fastmcp.skills._source import _Catalog, _Lookup, _SkillSource
 from fastmcp.skills.models import Skill
@@ -113,9 +114,11 @@ class SkillsDirectoryProvider(AggregateProvider, _SkillSource):
                 continue
 
             for skill_dir in root.iterdir():
+                # Skill folders may be links to directories elsewhere; the skill's
+                # own files must still resolve within the folder it links to.
                 try:
-                    skill_dir = safe_join(root, skill_dir.name)
-                except (PathEscapeError, OSError, RuntimeError):
+                    skill_dir = skill_dir.resolve(strict=True)
+                except (OSError, RuntimeError):
                     logger.warning(
                         f"Skipping skill directory that cannot be used: {skill_dir.name}"
                     )
@@ -242,18 +245,20 @@ class SkillsDirectoryProvider(AggregateProvider, _SkillSource):
     def _resource_provider(
         self, root: Path, name: str, relative: str | None = None
     ) -> SkillProvider:
-        if relative is None or relative == "_manifest":
-            provider = SkillProvider(root, supporting_files=self._supporting_files)
-            info = provider.skill_info
-            info.name = name
-            info.path = root
-            info.preserve_bytes = True
-            return provider
+        # Ordinary resources do not require valid skill frontmatter or UTF-8.
+        # Only listings and synthetic manifests need a complete file inventory.
         info = SkillInfo(
             name=name,
             description=f"Skill: {name}",
             path=root,
             main_file="SKILL.md",
+            files=[
+                file
+                for file in scan_skill_files(root)
+                if is_skill_file(root, file.path)
+            ]
+            if relative is None or relative == "_manifest"
+            else [],
             preserve_bytes=True,
         )
         return SkillProvider(
@@ -328,8 +333,9 @@ class SkillsDirectoryProvider(AggregateProvider, _SkillSource):
             and self._supporting_files != "resources"
         ):
             return None
-        path = root / relative
-        if relative != "_manifest" and not path.is_file():
+        if relative != "_manifest" and not await run_sync(
+            is_skill_file, root, relative
+        ):
             return None
         parts = self._uri_parts(uri)
         assert parts is not None
@@ -359,6 +365,8 @@ class SkillsDirectoryProvider(AggregateProvider, _SkillSource):
             return None
         root, relative = resolved
         if relative in {"SKILL.md", "_manifest"}:
+            return None
+        if not await run_sync(is_skill_file, root, relative):
             return None
         parts = self._uri_parts(uri)
         assert parts is not None
@@ -417,7 +425,7 @@ class SkillsDirectoryProvider(AggregateProvider, _SkillSource):
             return _Lookup(matches=1)
         return _Lookup(matches=1, skill=await self._visible_entry(snap))
 
-    def _owns_skill_resource(self, uri: str) -> bool:
+    async def _owns_skill_resource(self, uri: str) -> bool:
         parts = self._uri_parts(uri)
         return parts is not None and any(
             self._directories_for_name("/".join(parts[:length]))

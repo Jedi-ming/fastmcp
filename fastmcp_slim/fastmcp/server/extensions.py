@@ -240,7 +240,7 @@ class ServerExtension:
         """
         return {}
 
-    def requires_live_resource(self, uri: str) -> bool:
+    async def _requires_live_resource(self, uri: str) -> bool:
         """Whether an extension requires this resource to bypass response caching."""
         return False
 

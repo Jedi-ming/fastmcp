@@ -46,8 +46,13 @@ class _ProxySkillSource(_SkillSource):
             metadata.capabilities.extensions or {}
         )
 
-    def _owns_skill_resource(self, uri: str) -> bool:
-        return uri.startswith("skill://")
+    async def _owns_skill_resource(self, uri: str) -> bool:
+        if not self.provider._skills_resources_live:
+            return False
+        return (
+            await self.provider._get_resource(uri) is not None
+            or await self.provider._get_resource_template(uri) is not None
+        )
 
     @asynccontextmanager
     async def _client(self) -> AsyncIterator[Client]:
@@ -73,12 +78,17 @@ class _ProxySkillSource(_SkillSource):
                 page = await client._await_with_session_monitoring(
                     client.session.send_request(request, ListSkillsResult)
                 )
+                self.provider._skills_resources_live = True
                 skills.extend(page.skills)
                 if not page.next_cursor or page.next_cursor in seen:
                     break
                 seen.add(page.next_cursor)
                 cursor = page.next_cursor
-        return _Catalog(skills, tuple(skill.uri for skill in skills))
+        return _Catalog(
+            skills,
+            tuple(skill.uri for skill in skills),
+            {skill.uri: self.provider.client_factory for skill in skills},
+        )
 
     async def _get_skill_entry(
         self, uri: str, context: ServerRequestContext[Any, Any]
@@ -94,4 +104,7 @@ class _ProxySkillSource(_SkillSource):
                 if error.error.code != INVALID_PARAMS:
                     raise
                 return _Lookup()
-        return _Lookup(matches=1, skill=result.skill)
+        self.provider._skills_resources_live = True
+        return _Lookup(
+            matches=1, skill=result.skill, owner=self.provider.client_factory
+        )

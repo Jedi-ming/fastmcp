@@ -19,6 +19,7 @@ from fastmcp.server.providers.base import Provider
 from fastmcp.server.providers.skills._common import (
     SkillInfo,
     parse_frontmatter,
+    resolve_within,
     scan_skill_files,
 )
 from fastmcp.skills._resources import read_file
@@ -60,7 +61,9 @@ class SkillResource(Resource):
                 return await run_sync(
                     read_file, self.skill_info.path, self.skill_info.main_file
                 )
-            main_file_path = safe_join(self.skill_info.path, self.skill_info.main_file)
+            main_file_path = resolve_within(
+                self.skill_info.path, self.skill_info.main_file
+            )
             return main_file_path.read_text(encoding="utf-8")
 
     def _generate_manifest(self) -> str:
@@ -89,7 +92,7 @@ class SkillFileTemplate(ResourceTemplate):
         # Security: reject traversal, absolute-path injection, null bytes, and
         # symlink escapes before touching the filesystem.
         try:
-            full_path = safe_join(self.skill_info.path, file_path)
+            full_path = resolve_within(self.skill_info.path, file_path)
         except PathEscapeError as e:
             raise ValueError(f"Invalid path: {e}") from e
 
@@ -127,7 +130,7 @@ class SkillFileTemplate(ResourceTemplate):
         # Security: reject traversal, absolute-path injection, null bytes, and
         # symlink escapes before touching the filesystem.
         try:
-            full_path = safe_join(self.skill_info.path, file_path)
+            full_path = resolve_within(self.skill_info.path, file_path)
         except PathEscapeError as e:
             raise ValueError(f"Invalid path: {e}") from e
 
@@ -165,7 +168,7 @@ class SkillFileResource(Resource):
         # Security: reject traversal, absolute-path injection, null bytes, and
         # symlink escapes before touching the filesystem.
         try:
-            full_path = safe_join(self.skill_info.path, self.file_path)
+            full_path = resolve_within(self.skill_info.path, self.file_path)
         except PathEscapeError as e:
             raise ValueError(f"Invalid path: {e}") from e
 
@@ -243,7 +246,7 @@ class SkillProvider(Provider):
         if not self._skill_path.exists():
             raise FileNotFoundError(f"Skill directory not found: {self._skill_path}")
 
-        main_file = safe_join(self._skill_path, self._main_file_name)
+        main_file = resolve_within(self._skill_path, self._main_file_name)
 
         if not main_file.exists():
             raise FileNotFoundError(
@@ -254,8 +257,13 @@ class SkillProvider(Provider):
         content = main_file.read_text(encoding="utf-8")
         frontmatter, body = parse_frontmatter(content)
 
-        # Get description from frontmatter or first non-empty line
+        # Get description from frontmatter or first non-empty line. YAML
+        # sequences/mappings (and the line parser's list fallback) are not
+        # valid descriptions; treat any non-string like an absent one so the
+        # skill's resources can still be constructed.
         description = frontmatter.get("description", "")
+        if not isinstance(description, str):
+            description = ""
         if not description:
             for line in body.strip().split("\n"):
                 line = line.strip()

@@ -88,10 +88,10 @@ class SkillsExtension(ServerExtension):
             raise MCPError(code=METHOD_NOT_FOUND, message="Skills are not supported")
         return source
 
-    def requires_live_resource(self, uri: str) -> bool:
+    async def _requires_live_resource(self, uri: str) -> bool:
         """Keep manifest-backed resources coherent with current file bytes."""
         source = self._source
-        return source is not None and source._owns_skill_resource(uri)
+        return source is not None and await source._owns_skill_resource(uri)
 
     def methods(self) -> Sequence[MethodBinding]:
         return (

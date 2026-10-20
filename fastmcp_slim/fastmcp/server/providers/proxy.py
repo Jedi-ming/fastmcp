@@ -907,11 +907,13 @@ class ProxyProvider(Provider):
         self._resources_cache: _CacheEntry[Resource] | None = None
         self._templates_cache: _CacheEntry[ResourceTemplate] | None = None
         self._prompts_cache: _CacheEntry[Prompt] | None = None
+        self._skills_resources_live = False
 
-    def _get_skills_source(self) -> _SkillSource:
+    def _get_skills_source(self) -> _SkillSource | None:
         from fastmcp.server.providers.skills._proxy import _ProxySkillSource
+        from fastmcp.skills._composition import _transformed
 
-        return _ProxySkillSource(self)
+        return _transformed(_ProxySkillSource(self), self)
 
     async def _get_client(self) -> Client:
         """Gets a client instance by calling the sync or async factory."""
@@ -1212,6 +1214,11 @@ async def _read_upstream_metadata(
             raise
         logger.debug("Could not read upstream server metadata: %r", error)
         result = None
+    if result is not None:
+        from fastmcp.skills._constants import SKILLS_EXTENSION_ID
+
+        if SKILLS_EXTENSION_ID in (result.capabilities.extensions or {}):
+            provider._skills_resources_live = True
     if context is not None:
         context._request_state[key] = result
     return result

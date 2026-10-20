@@ -12,6 +12,8 @@ from mcp.server.context import ServerRequestContext
 from mcp_types import METHOD_NOT_FOUND
 
 from fastmcp.exceptions import AuthorizationError
+from fastmcp.resources.base import Resource
+from fastmcp.resources.template import ResourceTemplate
 from fastmcp.server.context import Context
 from fastmcp.server.transforms import Namespace, Visibility
 from fastmcp.skills._source import _Catalog, _Lookup, _manifest_uris, _SkillSource
@@ -22,6 +24,7 @@ from fastmcp.utilities.logging import get_logger
 if TYPE_CHECKING:
     from fastmcp.server.providers.aggregate import ProviderErrorStrategy
     from fastmcp.server.providers.base import Provider
+    from fastmcp.server.providers.proxy import ClientFactoryT
     from fastmcp.server.server import FastMCP
 
 logger = get_logger(__name__)
@@ -48,8 +51,11 @@ class _AggregateSkills(_SkillSource):
             await gather(source._is_supported(context) for source in self.sources)
         )
 
-    def _owns_skill_resource(self, uri: str) -> bool:
-        return any(source._owns_skill_resource(uri) for source in self.sources)
+    async def _owns_skill_resource(self, uri: str) -> bool:
+        for source in self.sources:
+            if await source._owns_skill_resource(uri):
+                return True
+        return False
 
     def _successful(self, results: Sequence[_T | BaseException]) -> list[_T]:
         successful: list[_T] = []
@@ -92,7 +98,16 @@ class _AggregateSkills(_SkillSource):
             ),
             key=lambda skill: skill.uri,
         )
-        return _Catalog(skills, identities)
+        return _Catalog(
+            skills,
+            identities,
+            {
+                uri: owner
+                for catalog in catalogs
+                for uri, owner in catalog.owners.items()
+                if counts[uri] == 1
+            },
+        )
 
     async def _get_skill_entry(
         self, uri: str, context: ServerRequestContext[Any, Any]
@@ -107,7 +122,10 @@ class _AggregateSkills(_SkillSource):
         skill = next(
             (lookup.skill for lookup in lookups if lookup.skill is not None), None
         )
-        return _Lookup(matches, skill if matches == 1 else None)
+        owner = next(
+            (lookup.owner for lookup in lookups if lookup.skill is not None), None
+        )
+        return _Lookup(matches, skill if matches == 1 else None, owner)
 
 
 class _TransformedSkills(_SkillSource):
@@ -158,9 +176,9 @@ class _TransformedSkills(_SkillSource):
     async def _is_supported(self, context: ServerRequestContext[Any, Any]) -> bool:
         return await self.source._is_supported(context)
 
-    def _owns_skill_resource(self, uri: str) -> bool:
+    async def _owns_skill_resource(self, uri: str) -> bool:
         original = self._reverse(uri)
-        return original is not None and self.source._owns_skill_resource(original)
+        return original is not None and await self.source._owns_skill_resource(original)
 
     async def _list_skill_entries(
         self, context: ServerRequestContext[Any, Any]
@@ -171,7 +189,11 @@ class _TransformedSkills(_SkillSource):
             for skill in map(self._skill, catalog.skills)
             if await self._visible(skill)
         ]
-        return _Catalog(skills, tuple(self._forward(uri) for uri in catalog.identities))
+        return _Catalog(
+            skills,
+            tuple(self._forward(uri) for uri in catalog.identities),
+            {self._forward(uri): owner for uri, owner in catalog.owners.items()},
+        )
 
     async def _get_skill_entry(
         self, uri: str, context: ServerRequestContext[Any, Any]
@@ -195,12 +217,40 @@ class _ServerSkills(_SkillSource):
         async with Context(fastmcp=self.server):
             return await self.source._is_supported(context)
 
-    def _owns_skill_resource(self, uri: str) -> bool:
-        return self.source._owns_skill_resource(uri)
+    async def _owns_skill_resource(self, uri: str) -> bool:
+        return await self.source._owns_skill_resource(uri)
 
-    async def _visible(self, skill: Skill) -> bool:
+    async def _visible(
+        self, skill: Skill, owner: ClientFactoryT | FastMCP | None
+    ) -> bool:
+        from fastmcp.server.providers.fastmcp_provider import (
+            FastMCPProviderResource,
+            FastMCPProviderResourceTemplate,
+        )
+        from fastmcp.server.providers.proxy import ProxyResource, ProxyTemplate
+
         try:
             for uri in _manifest_uris(skill):
+                resource, exists = await self.server._lookup_resource(uri)
+                component: Resource | ResourceTemplate | None = resource
+                if component is None:
+                    if exists:
+                        return False
+                    component = await self.server.get_resource_template(uri)
+                if component is None:
+                    return False
+                if owner is not None:
+                    if isinstance(component, ProxyResource | ProxyTemplate):
+                        if component._client_factory is not owner:
+                            return False
+                    elif isinstance(
+                        component,
+                        FastMCPProviderResource | FastMCPProviderResourceTemplate,
+                    ):
+                        if component._server is not owner:
+                            return False
+                    else:
+                        return False
                 await self.server._check_resource_access(uri)
         except AuthorizationError:
             return False
@@ -211,8 +261,14 @@ class _ServerSkills(_SkillSource):
     ) -> _Catalog:
         async with Context(fastmcp=self.server):
             catalog = await self.source._list_skill_entries(context)
-            skills = [skill for skill in catalog.skills if await self._visible(skill)]
-        return replace(catalog, skills=skills)
+            skills = [
+                skill
+                for skill in catalog.skills
+                if await self._visible(skill, catalog.owners.get(skill.uri))
+            ]
+        return replace(
+            catalog, skills=skills, owners={skill.uri: self.server for skill in skills}
+        )
 
     async def _get_skill_entry(
         self, uri: str, context: ServerRequestContext[Any, Any]
@@ -221,5 +277,7 @@ class _ServerSkills(_SkillSource):
             lookup = await self.source._get_skill_entry(uri, context)
             if lookup.skill is None:
                 return lookup
-            visible = await self._visible(lookup.skill)
-        return replace(lookup, skill=lookup.skill if visible else None)
+            visible = await self._visible(lookup.skill, lookup.owner)
+        return replace(
+            lookup, skill=lookup.skill if visible else None, owner=self.server
+        )
