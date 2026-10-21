@@ -25,7 +25,8 @@ case "${1:-}" in
     }
     FASTMCP_AGENTIC_REF=$revision uv run --locked prefect --no-prompt deploy \
       --prefect-file prefect.yaml \
-      --name cloud-stack-batch --name cloud-stack-validation --name cloud-contribution-verification --name cloud-triage-intake
+      --name cloud-stack-batch --name cloud-stack-validation --name cloud-contribution-verification --name cloud-triage-intake \
+      --name cloud-triage-verify --name cloud-triage-finalize
     ;;
   intake)
     config=${2:?intake configuration JSON file required}

@@ -7,6 +7,24 @@ Cloud workers fetch an immutable commit from `PrefectHQ/fastmcp` and execute her
 
 ## Review outputs
 
+The connected triage plan is built by `flows.agentic_triage_plan.build_triage_plan`
+after registering its two worker deployments. Its Luna assessment selects an
+existing-contribution verification, a real reproduction, or a recorded decision.
+All branches join a deterministic finalizer; failed agents or workers retain an
+operational outcome. The finalizer is executable code, not a human-input placeholder.
+The managed intake still supplies bounded GitHub evidence and pins the admission.
+Workers resolve that immutable admission and verify their native parent, node,
+deployment source, parameters and selected outputs before accepting a result.
+
+Native triage reuses an entire completed result only for the same evidence,
+instructions, probes, release baseline, plan version and worker source. It verifies
+the original parent and finalizer runs and rechecks current GitHub evidence before
+settling the intake. Failed or stale results are not reused. The current execution
+engine cannot skip a root agent by omitting an optional plan input, so partial
+assessment reuse is not used in the connected plan. Transient verification retries
+remain within the same assessment run. The older fix-stack path retains its
+individual role cache while it is migrated separately.
+
 The first milestone is complete triage: collect evidence, assess it, execute the
 appropriate verification, and return an actionable review queue. Fix stacks are a
 later capability. Classification alone does not satisfy this milestone.
@@ -194,6 +212,10 @@ Prepare a batch matching `flows.agentic_stack_policy.Batch` and runtime inputs
 matching `flows.agentic_stack_runtime.Runtime`. Runtime inputs name the four
 published role flow/version IDs, validator deployment ID, contribution verification
 deployment ID (`verification_id`) and controller source SHA. Once the named batch
+is configured for connected triage, also supply `triage_plan` (flow and version),
+`triage_verify_id`, and `triage_finalize_id`; all three must be supplied together.
+The connected plan handles `mre` and `review` items. The existing bounded stack
+controller continues to handle explicit `fix` batches. Once the named batch
 and its external effects are approved:
 
 ```sh

@@ -98,12 +98,20 @@ class Runtime(BaseModel):
     plans: dict[str, AgentPlan]
     validator_id: UUID
     verification_id: UUID | None = None
+    triage_plan: AgentPlan | None = None
+    triage_verify_id: UUID | None = None
+    triage_finalize_id: UUID | None = None
     source_sha: str = Field(pattern=r"^[a-f0-9]{40}$")
 
     @model_validator(mode="after")
     def check_roles(self) -> Runtime:
         if set(self.plans) != set(OUTPUTS):
             raise ValueError("Expected every stack agent role")
+        native = (self.triage_plan, self.triage_verify_id, self.triage_finalize_id)
+        if any(value is not None for value in native) and any(
+            value is None for value in native
+        ):
+            raise ValueError("Native triage requires its plan and both deployments")
         return self
 
 

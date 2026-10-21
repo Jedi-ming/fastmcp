@@ -2,15 +2,19 @@ from uuid import uuid4
 
 import pytest
 from prefect.client.orchestration import get_client
-from prefect.client.schemas.actions import ArtifactCreate
-from prefect.states import Completed
+from prefect.client.schemas.actions import ArtifactCreate, WorkPoolCreate
+from prefect.states import Completed, Failed
 from prefect.testing.utilities import prefect_test_harness
 
-from flows.agentic_existing_review import verification_result, verification_specs
+from flows.agentic_existing_review import (
+    start_verification,
+    verification_result,
+    verification_specs,
+)
 from flows.agentic_pr_verification import VerificationSpec, verify_contribution
 from flows.agentic_stack import digest
 from flows.agentic_stack_policy import Group
-from flows.agentic_stack_runtime import AgentPlan, Runtime
+from flows.agentic_stack_runtime import AgentPlan, Runtime, record
 
 
 def test_merged_history_is_not_verified_and_other_release_lines_are_not_substituted(
@@ -101,3 +105,45 @@ def test_verification_handoff_binds_real_run_deployment_and_inputs():
         )
         with pytest.raises(ValueError, match="different inputs"):
             verification_result(run.id, runtime, spec)
+
+
+def test_failed_verification_retry_is_idempotent_and_success_is_reused():
+    spec = VerificationSpec(
+        issue_number=1,
+        pr_number=2,
+        head_sha="a" * 40,
+        trunk_sha="b" * 40,
+        trunk_ref="main",
+        evidence_revision="c" * 64,
+    )
+    with prefect_test_harness(), get_client(sync_client=True) as client:
+        client.create_work_pool(WorkPoolCreate(name="managed", type="process"))
+        flow_id = client.create_flow(verify_contribution)
+        deployment_id = client.create_deployment(
+            flow_id, "retry-verification", version="d" * 40, work_pool_name="managed"
+        )
+        runtime = Runtime(
+            plans={
+                role: AgentPlan(flow_id=uuid4(), version_id=uuid4())
+                for role in ("assess", "reproduce", "prepare", "review")
+            },
+            validator_id=uuid4(),
+            verification_id=deployment_id,
+            source_sha="d" * 40,
+        )
+        first = start_verification(runtime, spec, "native-parent")
+        record.fn(
+            first.id, f"test-pr-2-verification-{first.id}", {"run_id": str(first.id)}
+        )
+        assert start_verification(runtime, spec, "native-parent").id == first.id
+        client.set_flow_run_state(first.id, Failed(), force=True)
+        retried = start_verification(runtime, spec, "native-parent")
+        assert retried.id != first.id
+        record.fn(
+            first.id,
+            f"test-pr-2-verification-{retried.id}",
+            {"run_id": str(retried.id)},
+        )
+        assert start_verification(runtime, spec, "native-parent").id == retried.id
+        client.set_flow_run_state(retried.id, Completed(), force=True)
+        assert start_verification(runtime, spec, "next-native-parent").id == retried.id

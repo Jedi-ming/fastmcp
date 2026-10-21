@@ -19,6 +19,7 @@ from prefect.states import Completed
 from flows.agentic_baseline import review_existing
 from flows.agentic_freshness import revalidate
 from flows.agentic_intake import route_intake
+from flows.agentic_native_triage import run_native_triage
 from flows.agentic_review_queue import retain_review_queue
 from flows.agentic_stack import StackLayer, StackSpec, digest, read_stack_artifact
 from flows.agentic_stack_plans import Review
@@ -38,6 +39,7 @@ from flows.agentic_stack_runtime import (
     skills,
 )
 from flows.agentic_stack_usage import usage_report
+from flows.agentic_triage_records import Admission
 from flows.agentic_validate_patch import fetch_source
 
 
@@ -378,6 +380,28 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                 if projected is None:
                     projected = assessment_context(item)
                     record(owner, assessment_key, projected)
+                if requested.mode != "fix" and runtime.triage_plan is not None:
+                    destination, result, native_calls = run_native_triage(
+                        owner,
+                        Admission(
+                            batch=batch,
+                            group=item_group,
+                            requested=requested,
+                            runtime=runtime,
+                            item=item,
+                            request={
+                                "instructions": bundle,
+                                "context": {**projected, "mode": requested.mode},
+                            },
+                            reproduce_request={
+                                "instructions": item_bundles["reproduce_instructions"],
+                                "context": projected,
+                            },
+                        ),
+                    )
+                    bins[destination].append(result)
+                    calls.extend(native_calls)
+                    continue
                 assessment, _ = ask(
                     "assess", bundle, projected, f"issue-{number}-assess"
                 )
