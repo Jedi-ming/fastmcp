@@ -78,6 +78,17 @@ This deterministic stage uses no model tokens. Provider compute cost remains
 unknown. Passing contributor tests is not a merge recommendation: contract review,
 current-branch composition and full-suite/static checks remain separate evidence.
 
+When only the release baseline advances during an existing-contribution review,
+the controller retains the completed assessment and runs at most two incremental
+refreshes. Each refresh requires unchanged contribution history and pinned skill
+contents, a complete bounded fast-forward diff, a new Luna assessment of that diff
+against the prior contract, and deterministic verification at the new baseline.
+The prior assessment is historical context, not automatic approval of new commits.
+Interrupted stages resume their saved inputs and child runs. Final freshness checks
+use the accepted refreshed snapshot; the original intake remains available.
+Changed PR revisions, human discussion, holds or policy require full reassessment.
+Incomplete or divergent baseline history also returns to full assessment.
+
 ## Bounded intake and review queue
 
 `cloud-triage-intake` selects work without a hand-authored batch. It reads one
@@ -104,6 +115,11 @@ history and PR revisions are refreshed when an item is processed, and again befo
 finalizing its result. Three unsuccessful admissions retain an operational receipt;
 the same metadata and implementation are not automatically retried again unless
 `retry_failed` is explicitly set. Changed metadata or implementation can retry it.
+Baseline churn is retained as pending refresh work, moved behind other queued
+items, and does not consume that operational-failure allowance. It never counts
+as an acknowledged issue. Review and MRE intake can select a freshly collected
+baseline if the branch moved during provisioning; fix publication retains its
+original pinned target and freshness gates.
 
 Rolling pages are not a snapshot census: concurrent closes and new activity can
 shift entries between pages. Repeated sweeps revisit them. Coverage artifacts

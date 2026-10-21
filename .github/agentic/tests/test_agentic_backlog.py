@@ -15,6 +15,7 @@ from prefect.testing.utilities import prefect_test_harness
 
 from flows.agentic_backlog import Intake, due, inventory, settle
 from flows.agentic_freshness import revalidate
+from flows.agentic_intake import evidence_revision
 from flows.agentic_stack_runtime import AgentPlan, Runtime, record
 from flows.agentic_triage import admit, checkpoint, dispatch, finish, latest
 
@@ -277,7 +278,9 @@ def test_queue_recovers_same_controller_and_commits_only_saved_outcomes(
             f"{plan['batch']['id']}-issue-1-intake",
             {"evidence": original, "route": {"revision": "a" * 64}},
         )
-        responses["/fresh/1"] = original
+        accepted = {**original, "base_sha": "b" * 40}
+        record.fn(child, f"{plan['batch']['id']}-issue-1-review-evidence", accepted)
+        responses["/fresh/1"] = accepted
 
         def read_evidence(number, branch):
             return read(f"fresh/{number}")
@@ -292,6 +295,10 @@ def test_queue_recovers_same_controller_and_commits_only_saved_outcomes(
         assert [row["issue_number"] for row in state["pending"]] == [2, 3]
         assert state["pending"][0]["attempts"] == 1
         assert latest(f"{config.scope()}-issue-1")["status"] == "triaged"
+        assert latest(f"{config.scope()}-issue-1")[
+            "evidence_revision"
+        ] == evidence_revision(accepted)
+        assert latest(f"{config.scope()}-issue-1")["baseline_sha"] == "b" * 40
         assert latest(f"{config.scope()}-issue-2") is None
         for artifact in client.read_artifacts(
             flow_run_filter=FlowRunFilter(id={"any_": [replacement]})

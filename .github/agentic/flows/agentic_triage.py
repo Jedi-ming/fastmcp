@@ -25,6 +25,7 @@ from prefect.states import Completed
 
 from flows.agentic_backlog import Intake, due, inventory, settle
 from flows.agentic_freshness import revalidate
+from flows.agentic_intake import evidence_revision
 from flows.agentic_review_queue import plain, retain_markdown, retain_review_queue
 from flows.agentic_stack_policy import Batch
 from flows.agentic_stack_runtime import Runtime, collect, intake_tools, secret_sync
@@ -269,12 +270,19 @@ def finish(
             }
         originals = {}
         for number in selected:
+            reviewed = (
+                latest(f"{plan['batch']['id']}-issue-{number}-review-evidence", run_id)
+                if run_id
+                else None
+            )
             intake = (
                 latest(f"{plan['batch']['id']}-issue-{number}-intake", run_id)
                 if run_id
                 else None
             )
-            if intake:
+            if reviewed is not None:
+                originals[number] = reviewed
+            elif intake:
                 originals[number] = intake["evidence"]
         result = revalidate(
             result,
@@ -288,20 +296,16 @@ def finish(
             number = item["issue_number"]
             if number not in completed and number not in exhausted:
                 continue
-            intake = (
-                latest(f"{plan['batch']['id']}-issue-{number}-intake", run_id)
-                if run_id
-                else None
-            )
             receipt = {
                 **item,
                 "status": "triaged" if number in completed else "operational",
                 "processed_at": timestamp,
                 "source_sha": plan["runtime"]["source_sha"],
                 "controller_run_id": str(run_id),
-                "evidence_revision": intake["route"].get("revision")
-                if intake
+                "evidence_revision": evidence_revision(originals[number])
+                if number in originals
                 else None,
+                "baseline_sha": originals.get(number, {}).get("base_sha"),
             }
             receipts.append(receipt)
         pending = [row for row in pending if row["issue_number"] not in exhausted]

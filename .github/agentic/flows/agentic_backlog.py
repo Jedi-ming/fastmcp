@@ -92,6 +92,11 @@ def settle(
     pending: list[dict], selected: list[int], result: dict
 ) -> tuple[list[dict], list[int]]:
     errors = result["bins"]["operational"]
+    moving = {
+        item.get("issue_number")
+        for item in errors
+        if item.get("status") == "baseline_changed"
+    }
     failed = {item.get("issue_number") for item in errors}
     if any(number is None for number in failed):
         failed.update(selected)
@@ -101,11 +106,13 @@ def settle(
             continue
         for item in items:
             number = item.get("issue_number")
-            if item.get("status") == "stale" or any(
+            if item.get("status") in {"stale", "baseline_changed"} or any(
                 check["status"] == "environment_failure"
                 for check in item.get("verification", [])
             ):
                 failed.add(number)
+                if item.get("status") == "baseline_changed":
+                    moving.add(number)
             else:
                 seen.add(number)
     completed = [n for n in selected if n in seen and n not in failed]
@@ -113,7 +120,8 @@ def settle(
     for item in pending:
         if item["issue_number"] in completed:
             continue
-        if item["issue_number"] in selected:
+        if item["issue_number"] in selected and item["issue_number"] not in moving:
             item = {**item, "attempts": item["attempts"] + 1}
         remaining.append(item)
+    remaining.sort(key=lambda item: item["issue_number"] in moving)
     return remaining, completed

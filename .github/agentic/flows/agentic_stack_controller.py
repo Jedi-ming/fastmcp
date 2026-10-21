@@ -16,7 +16,7 @@ from prefect.client.schemas.objects import State
 from prefect.context import FlowRunContext
 from prefect.states import Completed
 
-from flows.agentic_existing_review import verify_existing
+from flows.agentic_baseline import review_existing
 from flows.agentic_freshness import revalidate
 from flows.agentic_intake import route_intake
 from flows.agentic_review_queue import retain_review_queue
@@ -344,8 +344,15 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                     }
                     record(owner, intake_key, item)
                 evidence = item["evidence"]
+                item_group = group
+                item_bundles = bundles
                 if evidence["base_sha"] != group.base_sha:
-                    raise ValueError("Release branch moved after batch selection")
+                    if requested.mode == "fix":
+                        raise ValueError("Release branch moved after batch selection")
+                    item_group = group.model_copy(
+                        update={"base_sha": evidence["base_sha"]}
+                    )
+                    item_bundles = skills(evidence["base_sha"])
                 route = item["route"]
                 if route["route"] in {
                     "closed",
@@ -362,9 +369,9 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                     bins[destination].append(route)
                     continue
                 bundle = (
-                    bundles["existing_instructions"]
+                    item_bundles["existing_instructions"]
                     if route["route"] == "review_existing"
-                    else bundles["assess_instructions"]
+                    else item_bundles["assess_instructions"]
                 )
                 assessment_key = f"{batch.id}-issue-{number}-assessment-context"
                 projected = saved(owner, assessment_key)
@@ -379,16 +386,17 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                     route["route"] == "review_existing"
                     and assessment["decision"] == "existing_review"
                 ):
-                    bins["existing_review"].append(
-                        verify_existing(
-                            owner,
-                            batch,
-                            group,
-                            runtime,
-                            item,
-                            requested.verification_probes,
-                        )
+                    destination, review = review_existing(
+                        owner,
+                        batch,
+                        item_group,
+                        runtime,
+                        item,
+                        requested.verification_probes,
+                        bundle,
+                        ask,
                     )
+                    bins[destination].append(review)
                     continue
                 if (
                     assessment["decision"] != "reproduce"
@@ -406,7 +414,7 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                     continue
                 reproduction, _ = ask(
                     "reproduce",
-                    bundles["reproduce_instructions"],
+                    item_bundles["reproduce_instructions"],
                     item,
                     f"issue-{number}-reproduce",
                 )
@@ -561,8 +569,11 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
     }
     originals = {}
     for number in branches:
+        reviewed = saved(owner, f"{batch.id}-issue-{number}-review-evidence")
         intake = saved(owner, f"{batch.id}-issue-{number}-intake")
-        if intake is not None:
+        if reviewed is not None:
+            originals[number] = reviewed
+        elif intake is not None:
             originals[number] = intake["evidence"]
     result = revalidate(result, originals, branches, collect)
     record(owner, f"{batch.id}-review-bins", result)

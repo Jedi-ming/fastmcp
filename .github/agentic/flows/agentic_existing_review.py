@@ -8,10 +8,11 @@ from prefect import task
 from prefect.client.orchestration import get_client
 from prefect.client.schemas.filters import ArtifactFilter, FlowRunFilter
 
+from flows.agentic_freshness import change_kind
 from flows.agentic_pr_verification import VerificationSpec
 from flows.agentic_stack import digest
 from flows.agentic_stack_policy import Batch, Group, publication_revision
-from flows.agentic_stack_runtime import Runtime, collect, owner_alive, record
+from flows.agentic_stack_runtime import Runtime, collect, owner_alive, record, saved
 
 
 def verification_result(run_id: UUID, runtime: Runtime, spec: VerificationSpec) -> dict:
@@ -79,7 +80,19 @@ def verify_existing(
     runtime: Runtime,
     item: dict,
     probes: dict[str, str],
+    stage: str = "initial",
 ) -> dict:
+    outcome_key = (
+        f"{batch.id}-issue-{item['evidence']['issue']['number']}-verify-{stage}-outcome"
+    )
+    binding = digest(
+        [group.model_dump(mode="json"), runtime.model_dump(mode="json"), item, probes]
+    )
+    previous = saved(owner, outcome_key)
+    if previous is not None:
+        if previous["binding"] != binding:
+            raise ValueError("Verification stage inputs changed")
+        return previous["outcome"]
     if runtime.verification_id is None:
         raise ValueError(
             "Existing contributions require a configured managed verification deployment"
@@ -123,7 +136,7 @@ def verify_existing(
             )
         record(
             owner,
-            f"{batch.id}-pr-{pr['number']}-verification",
+            f"{batch.id}-{stage}-pr-{pr['number']}-verification",
             {"run_id": str(run.id), "spec": spec.model_dump(mode="json")},
         )
         while True:
@@ -139,15 +152,18 @@ def verify_existing(
             )
         )
     current = collect(evidence["issue"]["number"], group.branch)
-    stale = publication_revision(current) != publication_revision(evidence)
-    return {
+    change = change_kind(evidence, current)
+    review = {
         "issue_number": evidence["issue"]["number"],
         "assessment": item["assessment"],
         "route": item["route"],
         "verification": results,
-        "status": "stale" if stale else "verification_recorded",
+        "status": change if change != "unchanged" else "verification_recorded",
         "merge_ready": False,
         "next_step": "Refresh changed evidence"
-        if stale
+        if change != "unchanged"
         else "Review executed tests and failures against the established contract; full-suite and composition checks remain separate",
     }
+    outcome = {"review": review, "observed": current}
+    record(owner, outcome_key, {"binding": binding, "outcome": outcome})
+    return outcome

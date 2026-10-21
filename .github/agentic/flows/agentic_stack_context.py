@@ -101,6 +101,7 @@ def comparison(read: Read, base: str, head: str, budget: int) -> dict:
         "head_sha": head,
         "status": value["status"],
         "ahead_by": value.get("ahead_by"),
+        "behind_by": value.get("behind_by"),
         "commits": [
             {"sha": c["sha"], "message": c["commit"]["message"]} for c in commits
         ],

@@ -9,6 +9,15 @@ import httpx
 from flows.agentic_stack_policy import publication_revision
 
 
+def change_kind(original: dict, current: dict) -> str:
+    if publication_revision(original) == publication_revision(current):
+        return "unchanged"
+    pinned = {**current, "base_sha": original["base_sha"]}
+    if publication_revision(original) == publication_revision(pinned):
+        return "baseline_changed"
+    return "stale"
+
+
 def revalidate(
     result: dict,
     originals: dict[int, dict],
@@ -34,8 +43,11 @@ def revalidate(
             if original is not None:
                 if not isinstance(current, dict):
                     raise ValueError("Invalid fresh evidence")
-                if publication_revision(current) == publication_revision(original):
+                status = change_kind(original, current)
+                if status == "unchanged":
                     continue
+                if status == "baseline_changed":
+                    reason = "Release baseline advanced; retain completed work for baseline review and verification."
         except (
             ValueError,
             RuntimeError,
