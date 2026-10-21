@@ -51,3 +51,33 @@ def test_model_text_cannot_create_links_or_override_queue_formatting():
         == r"\[open account settings\]\(https://attacker\.example\)"
     )
     assert plain(None) == "unknown"
+
+
+def test_reproduction_queue_preserves_probe_and_contains_fence_like_output():
+    probe = "diff --git a/test_probe.py b/test_probe.py\n+assert result == expected\n"
+    observed = "Expected 200, received 404\n```\n[untrusted](https://example.com)"
+    result = {
+        "batch_id": "mre",
+        "bins": {
+            "evidence": [
+                {
+                    "issue_number": 603,
+                    "assessment": {
+                        "reason": "Investigate the reported routing failure"
+                    },
+                    "decision": "reproduced",
+                    "base_sha": "a" * 40,
+                    "contract": "The advertised route accepts messages",
+                    "command": "uv run pytest test_probe.py",
+                    "observed": observed,
+                    "regression_patch": probe,
+                }
+            ]
+        },
+    }
+    markdown = review_markdown(result)
+    assert "**Reproduction outcome:** reproduced" in markdown
+    assert "uv run pytest test_probe.py" in markdown
+    assert f"````text\n{observed}\n````" in markdown
+    assert f"```diff\n{probe}\n```" in markdown
+    assert "a" * 40 in markdown

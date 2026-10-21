@@ -17,6 +17,13 @@ def plain(value: object) -> str:
     return html.escape(text, quote=False).replace("|", "&#124;")
 
 
+def code_block(value: str, language: str = "text") -> str:
+    fence = "`" * max(
+        3, 1 + max((len(run) for run in re.findall(r"`+", value)), default=0)
+    )
+    return f"{fence}{language}\n{value}\n{fence}"
+
+
 def review_markdown(result: dict) -> str:
     sections = {
         "existing_review": "Existing contributions",
@@ -49,7 +56,33 @@ def review_markdown(result: dict) -> str:
             assessment = item.get("assessment", item)
             reason = assessment.get("reason") or item.get("detail") or item.get("error")
             if reason:
+                if item.get("verification"):
+                    lines.extend(["Assessment before verification:", ""])
                 lines.extend([plain(reason), ""])
+            if "observed" in item and "base_sha" in item:
+                lines.extend(
+                    [
+                        f"**Reproduction outcome:** {plain(item.get('decision'))}.",
+                        f"Baseline: {plain(item['base_sha'])}.",
+                        "",
+                    ]
+                )
+                if item.get("contract"):
+                    lines.extend(["Contract: " + plain(item["contract"]), ""])
+                if item.get("command"):
+                    lines.extend(
+                        ["Command:", "", code_block(item["command"], "sh"), ""]
+                    )
+                lines.extend(["Observed:", "", code_block(item["observed"]), ""])
+                if item.get("regression_patch"):
+                    lines.extend(
+                        [
+                            "Regression probe (not a fix):",
+                            "",
+                            code_block(item["regression_patch"], "diff"),
+                            "",
+                        ]
+                    )
             if item.get("status") == "stale":
                 lines.extend(["**Evidence changed. Refresh before acting.**", ""])
             held = [
