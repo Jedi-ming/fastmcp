@@ -385,6 +385,21 @@ async def test_aggregate_uses_existing_provider_error_strategy(
                 await client.list_skills()
 
 
+async def test_failing_backend_does_not_block_skills_discovery(
+    tmp_path: Path,
+) -> None:
+    def broken_factory() -> ProxyClient:
+        raise ValueError("backend client failed")
+
+    good = backend(tmp_path, "good")
+    root = FastMCP("root")
+    root.add_provider(ProxyProvider(lambda: ProxyClient(good, mode="auto")))
+    root.add_provider(ProxyProvider(broken_factory), namespace="broken")
+    async with skills_client(root) as client:
+        assert client.server_capabilities is not None
+        assert SKILLS_EXTENSION_ID in (client.server_capabilities.extensions or {})
+
+
 async def test_legacy_proxy_does_not_serve_skills_methods(tmp_path: Path) -> None:
     async with skills_client(
         create_proxy(backend(tmp_path, "review")), mode="legacy"

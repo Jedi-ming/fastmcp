@@ -48,7 +48,12 @@ class _AggregateSkills(_SkillSource):
 
     async def _is_supported(self, context: ServerRequestContext[Any, Any]) -> bool:
         return any(
-            await gather(source._is_supported(context) for source in self.sources)
+            self._successful(
+                await gather(
+                    (source._is_supported(context) for source in self.sources),
+                    return_exceptions=True,
+                )
+            )
         )
 
     async def _owns_skill_resource(self, uri: str) -> bool:
