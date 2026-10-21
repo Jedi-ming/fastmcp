@@ -75,6 +75,10 @@ This registers only `cloud-stack-batch` and `cloud-stack-validation` in the mana
 pool, with no schedules. The publisher loads the existing Cloud Secret block
 `fastmcp-triage-gh-token`. Agent roles receive no GitHub write credential.
 
+Managed execution accepts only its supported image tags, not arbitrary patch
+version tags. The deployment uses its supported Python 3.12 image and installs
+the pinned Prefect version and FastAPI compatibility constraint before pull steps.
+
 Prepare a batch matching `flows.agentic_stack_policy.Batch` and runtime inputs
 matching `flows.agentic_stack_runtime.Runtime`. Runtime inputs name the four
 published role flow/version IDs, validator deployment ID and controller source
