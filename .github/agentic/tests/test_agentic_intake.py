@@ -8,6 +8,7 @@ from flows.agentic_intake import (
     held,
     route_intake,
 )
+from flows.agentic_stack_policy import publication_revision
 
 
 @pytest.fixture
@@ -39,6 +40,50 @@ def comment(number, date, body, login="reporter", kind="User"):
         "body": body,
         "user": {"login": login, "type": kind},
     }
+
+
+@pytest.mark.parametrize("revision", [evidence_revision, publication_revision])
+def test_unrelated_repository_activity_does_not_invalidate_contribution(
+    evidence, revision
+):
+    original = {
+        **evidence,
+        "stacks": [],
+        "timeline": [
+            {
+                "event": "cross-referenced",
+                "source": {
+                    "issue": {
+                        "number": 7,
+                        "state": "open",
+                        "repository": {
+                            "id": 1,
+                            "full_name": "PrefectHQ/fastmcp",
+                            "stargazers_count": 28161,
+                            "pushed_at": "2026-10-21T15:23:00Z",
+                        },
+                    }
+                },
+            }
+        ],
+    }
+    original["prs"] = [{"number": 9, "timeline": deepcopy(original["timeline"])}]
+    refreshed = deepcopy(original)
+    for timeline in (refreshed["timeline"], refreshed["prs"][0]["timeline"]):
+        repository = timeline[0]["source"]["issue"]["repository"]
+        repository["stargazers_count"] += 1
+        repository["pushed_at"] = "2026-10-21T16:28:29Z"
+    assert revision(original) == revision(refreshed)
+    assert (
+        original["timeline"][0]["source"]["issue"]["repository"]["stargazers_count"]
+        == 28161
+    )
+    changed = deepcopy(refreshed)
+    changed["timeline"][0]["source"]["issue"]["state"] = "closed"
+    assert revision(original) != revision(changed)
+    changed = deepcopy(refreshed)
+    changed["prs"][0]["timeline"][0]["source"]["issue"]["repository"]["id"] = 2
+    assert revision(original) != revision(changed)
 
 
 def test_intake_never_rejects_a_report_for_missing_labels(evidence):

@@ -27,6 +27,17 @@ does not establish a current defect, and diff inspection does not count as a tes
 The assessor loads contribution-review skills; test-authoring guidance is reserved
 for the reproduction, preparation and independent review roles.
 
+Before starting another assessment, the controller looks up a durable fingerprint
+index, falling back to the twelve most recent completed role runs for older
+unindexed results. Reuse requires identical skills and projected inputs,
+the same complete intake revision and active plan version, and a successful
+non-operational decision. Only the raw snapshot hash, which includes collection
+time, is excluded from comparison. Revision hashes ignore repository-wide counts,
+size and activity timestamps embedded in cross-reference events; those remain in
+the retained raw evidence. Changed contribution history, revisions, labels or
+skills invalidate reuse. Reused assessments retain provenance and add zero new model
+usage to the batch; historical usage is not counted again.
+
 Explicit Luna roles use complete repository skills pinned to the source revision:
 assessment, reproduction, preparation and independent review. Each role has one
 attempt and a 180-second platform limit. The batch allows one repair round and a

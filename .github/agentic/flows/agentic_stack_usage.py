@@ -16,7 +16,7 @@ from prefect.client.schemas.sorting import LogSort
     persist_result=False,
 )
 def usage_report(owner: UUID) -> dict:
-    runs = []
+    runs: list[dict] = []
     with get_client(sync_client=True) as client:
         records = client.read_artifacts(
             artifact_filter=ArtifactFilter(type={"any_": ["fastmcp-stack-controller"]}),
@@ -33,6 +33,19 @@ def usage_report(owner: UUID) -> dict:
             and isinstance(record.data, dict)
         }
         for run_id, admission in sorted(admissions.items()):
+            if admission.get("reused") is True:
+                runs.append(
+                    {
+                        **admission,
+                        "observed_requests": 0,
+                        "requests_missing_usage": 0,
+                        "log_scan_exhausted": True,
+                        "input_tokens": 0,
+                        "output_tokens": 0,
+                        "basis": "Reused a completed assessment; its historical model usage is excluded from this batch.",
+                    }
+                )
+                continue
             seen = set()
             counters = {"input_tokens": 0, "output_tokens": 0}
             observed = 0

@@ -3,9 +3,10 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from copy import deepcopy
 from datetime import datetime
 
-POLICY_VERSION = "fastmcp-stacks-1"
+POLICY_VERSION = "fastmcp-stacks-2"
 AREA_LABELS = {
     "auth",
     "client",
@@ -28,8 +29,33 @@ HOLD = re.compile(
 )
 
 
+def revision_evidence(evidence: dict) -> dict:
+    content = deepcopy(evidence)
+    content.pop("collected_at", None)
+    timelines = [content.get("timeline", [])]
+    timelines.extend(pr.get("timeline", []) for pr in content.get("prs", []))
+    for timeline in timelines:
+        for event in timeline:
+            source = (event.get("source") or {}).get("issue") or {}
+            repository = source.get("repository") or {}
+            for field in (
+                "forks_count",
+                "forks",
+                "watchers_count",
+                "watchers",
+                "stargazers_count",
+                "open_issues_count",
+                "open_issues",
+                "size",
+                "updated_at",
+                "pushed_at",
+            ):
+                repository.pop(field, None)
+    return content
+
+
 def evidence_revision(evidence: dict) -> str:
-    content = {key: value for key, value in evidence.items() if key != "collected_at"}
+    content = revision_evidence(evidence)
     payload = json.dumps(
         [POLICY_VERSION, content], sort_keys=True, separators=(",", ":")
     )

@@ -21,6 +21,7 @@ from prefect.client.schemas.filters import ArtifactFilter, FlowRunFilter
 from prefect.utilities.asyncutils import run_coro_as_sync
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from flows.agentic_assessment_cache import assessment_candidates, assessment_key
 from flows.agentic_stack import digest
 from flows.agentic_stack_context import assessment_context as project_assessment
 from flows.agentic_stack_plans import OUTPUTS
@@ -269,6 +270,11 @@ def judge(
 ) -> tuple[dict, str]:
     owner_alive(owner, deadline)
     parameters = {"instructions": instructions, "context": context}
+    cache_key = (
+        assessment_key(plan.flow_id, plan.version_id, parameters)
+        if role == "assess"
+        else None
+    )
     record(
         owner,
         f"{key}-intent",
@@ -277,6 +283,58 @@ def judge(
     active = api("GET", f"/flows/{plan.flow_id}/execution-plan")
     if active["active_version"]["id"] != str(plan.version_id):
         raise ValueError("Agent plan changed since batch configuration")
+    previous = saved(owner, key)
+    if previous is not None:
+        if previous["parameters_sha256"] != digest(parameters):
+            raise ValueError("Stored agent result used different inputs")
+        return OUTPUTS[role].model_validate(previous["result"]).model_dump(
+            mode="json"
+        ), previous["run_id"]
+    if role == "assess":
+        for candidate_id in assessment_candidates(
+            plan.flow_id, plan.version_id, parameters
+        ):
+            candidate = api("GET", f"/flow_runs/{candidate_id}/execution-plan")
+            if candidate["status"] != "completed" or candidate["snapshot"][
+                "execution_plan_version_id"
+            ] != str(plan.version_id):
+                continue
+            output = api(
+                "GET", f"/flow_runs/{candidate_id}/execution-plan/outputs/result"
+            )["decision"]
+            result = OUTPUTS[role].model_validate(output).model_dump(mode="json")
+            if result["decision"] == "environment_failure":
+                continue
+            run_id = str(candidate_id)
+            candidate_run = api("GET", f"/flow_runs/{run_id}")
+            reused = candidate_run.get("idempotency_key") != key + "-" + digest(
+                parameters
+            )
+            admission = {
+                "role": role,
+                "run_id": run_id,
+                "plan_version": str(plan.version_id),
+            }
+            if reused:
+                admission["reused"] = True
+            record(
+                owner,
+                f"{key}-agent-run",
+                admission,
+            )
+            if cache_key is not None:
+                record(owner, cache_key, {"run_id": run_id})
+            record(
+                owner,
+                key,
+                {
+                    "run_id": run_id,
+                    "parameters_sha256": digest(parameters),
+                    "result": result,
+                    "reused": reused,
+                },
+            )
+            return result, run_id
     created = api(
         "POST",
         f"/flows/{plan.flow_id}/execution-plan/runs",
@@ -309,6 +367,8 @@ def judge(
         "decision"
     ]
     result = OUTPUTS[role].model_validate(output).model_dump(mode="json")
+    if cache_key is not None and result["decision"] != "environment_failure":
+        record(owner, cache_key, {"run_id": run_id})
     record(
         owner,
         key,

@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from flows.agentic_intake import revision_evidence
 from flows.agentic_pr_verification import VerificationSpec
 from flows.agentic_stack import StackSpec, digest
 
@@ -61,7 +61,7 @@ def publication_revision(
 ) -> str:
     if evidence.get("complete") is not True or evidence.get("schema_version") != 2:
         raise ValueError("Publication needs complete evidence")
-    value = deepcopy(evidence)
+    value = revision_evidence(evidence)
     own = set()
     if spec is not None:
         manifest = {layer["branch"]: layer for layer in layers or []}

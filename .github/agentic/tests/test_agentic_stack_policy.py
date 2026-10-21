@@ -177,3 +177,18 @@ def test_real_prefect_usage_preserves_unknown_and_includes_failed_requests():
         assert by_run[str(measured.id)]["requests_missing_usage"] == 1
         assert by_run[str(missing.id)]["input_tokens"] is None
         assert usage["cost"] is None
+        other_owner = client.create_flow_run(stack_batch, parameters={})
+        record.fn(
+            other_owner.id,
+            "trial-assess-agent-run",
+            {
+                "role": "assess",
+                "run_id": str(measured.id),
+                "plan_version": "pinned",
+                "reused": True,
+            },
+        )
+        reused = usage_report.fn(other_owner.id)
+        assert (reused["input_tokens"], reused["output_tokens"]) == (0, 0)
+        assert reused["runs"][0]["observed_requests"] == 0
+        assert reused["runs"][0]["reused"] is True
