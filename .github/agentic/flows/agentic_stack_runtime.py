@@ -96,6 +96,7 @@ class Runtime(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     plans: dict[str, AgentPlan]
     validator_id: UUID
+    verification_id: UUID | None = None
     source_sha: str = Field(pattern=r"^[a-f0-9]{40}$")
 
     @model_validator(mode="after")

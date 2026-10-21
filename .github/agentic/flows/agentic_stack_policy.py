@@ -4,8 +4,9 @@ from copy import deepcopy
 from datetime import datetime, timedelta
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from flows.agentic_pr_verification import VerificationSpec
 from flows.agentic_stack import StackSpec, digest
 
 
@@ -13,6 +14,12 @@ class Item(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     issue_number: int = Field(gt=0)
     mode: Literal["fix", "mre", "review"] = "fix"
+    verification_probes: dict[str, str] = Field(default_factory=dict, max_length=5)
+
+    @field_validator("verification_probes")
+    @classmethod
+    def bounded_probes(cls, value: dict[str, str]) -> dict[str, str]:
+        return VerificationSpec.test_files(value)
 
 
 class Group(BaseModel):

@@ -16,6 +16,7 @@ from prefect.client.schemas.objects import State
 from prefect.context import FlowRunContext
 from prefect.states import Completed
 
+from flows.agentic_existing_review import verify_existing
 from flows.agentic_intake import route_intake
 from flows.agentic_stack import StackLayer, StackSpec, digest, read_stack_artifact
 from flows.agentic_stack_plans import Review
@@ -371,6 +372,21 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                     "assess", bundle, projected, f"issue-{number}-assess"
                 )
                 item["assessment"] = assessment
+                if (
+                    route["route"] == "review_existing"
+                    and assessment["decision"] == "existing_review"
+                ):
+                    bins["existing_review"].append(
+                        verify_existing(
+                            owner,
+                            batch,
+                            group,
+                            runtime,
+                            item,
+                            requested.verification_probes,
+                        )
+                    )
+                    continue
                 if (
                     assessment["decision"] != "reproduce"
                     or route["route"] == "review_existing"
