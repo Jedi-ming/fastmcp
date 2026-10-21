@@ -380,7 +380,7 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                 if projected is None:
                     projected = assessment_context(item)
                     record(owner, assessment_key, projected)
-                if requested.mode != "fix" and runtime.triage_plan is not None:
+                if requested.mode != "fix":
                     destination, result, native_calls = run_native_triage(
                         owner,
                         Admission(

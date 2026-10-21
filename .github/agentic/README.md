@@ -13,6 +13,8 @@ existing-contribution verification, a real reproduction, or a recorded decision.
 All branches join a deterministic finalizer; failed agents or workers retain an
 operational outcome. The finalizer is executable code, not a human-input placeholder.
 The managed intake still supplies bounded GitHub evidence and pins the admission.
+Review and MRE batches require the connected plan; a missing configuration returns
+an operational failure instead of falling back to the old Python role routing.
 Workers resolve that immutable admission and verify their native parent, node,
 deployment source, parameters and selected outputs before accepting a result.
 
