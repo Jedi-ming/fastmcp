@@ -78,6 +78,53 @@ This deterministic stage uses no model tokens. Provider compute cost remains
 unknown. Passing contributor tests is not a merge recommendation: contract review,
 current-branch composition and full-suite/static checks remain separate evidence.
 
+## Bounded intake and review queue
+
+`cloud-triage-intake` selects work without a hand-authored batch. It reads one
+30-row page of the oldest open GitHub items and one 30-row page of recent updates,
+filters out PRs, and retains at most sixty unique pending issues before dispatch.
+It drains that queue in batches of at most three, then advances the backlog page.
+The queue and page are saved before starting the child controller. An interrupted
+intake recovers the same child by its stable identity and exact inputs. Saved
+results, including a completed group without final review bins, survive a later
+child failure. Fresh evidence is required before finalizing queued work. The
+finalized decision snapshot is saved before receipts and presentation artifacts,
+so retrying an interrupted commit completes the same snapshot; a later intake
+recovery revalidates the child evidence before making a new snapshot.
+
+The deployment is serial and has no schedule. Intake uses `mre` mode: existing
+contributions go to verification, new work can reach reproduction, and fix-stack
+publication is unavailable through this entrypoint. Public GitHub mutations and
+bot-owned label behavior remain unchanged. Independent probes for arbitrary
+reports still require the reproduction handler; intake does not manufacture them.
+
+Successful receipts defer unchanged issue metadata for sixty minutes by default.
+This is a cooldown, not a claim that associated PR history is unchanged. Full
+history and PR revisions are refreshed when an item is processed, and again before
+finalizing its result. Three unsuccessful admissions retain an operational receipt;
+the same metadata and implementation are not automatically retried again unless
+`retry_failed` is explicitly set. Changed metadata or implementation can retry it.
+
+Rolling pages are not a snapshot census: concurrent closes and new activity can
+shift entries between pages. Repeated sweeps revisit them. Coverage artifacts
+report raw rows, unique issues, deferred work, selected/triaged/pending counts and
+retry exhaustion. They do not claim whole-backlog coverage or measured hours saved.
+Each controller also creates a Markdown review queue with existing contribution
+links, holds, executed regressions, closure proposals, missing evidence, concrete
+questions and observed usage. Evidence stays bound to the recorded revisions.
+
+For the general backlog, use `{"branch":"main","max_items":3}` as the config.
+An optional `issues` list bounds a trial to named issues and has a separate queue:
+
+```sh
+bash scripts/agentic_stack.sh intake config.json runtime.json \
+  CONTROLLER_DEPLOYMENT_ID INTAKE_DEPLOYMENT_ID unique-operation-id
+```
+
+Reuse the operation ID if the launch response is uncertain. Inspect the intake's
+coverage and review queue artifacts and its linked controller's results. This
+command does not enable recurring runs.
+
 ## Local verification
 
 From this directory:
@@ -114,8 +161,8 @@ requires a clean checkout at a commit already available in `PrefectHQ/fastmcp`:
 bash scripts/agentic_stack.sh register
 ```
 
-This registers `cloud-stack-batch`, `cloud-stack-validation`, and
-`cloud-contribution-verification` in the managed pool, with no schedules. The
+This registers `cloud-triage-intake`, `cloud-stack-batch`, `cloud-stack-validation`,
+and `cloud-contribution-verification` in the managed pool, with no schedules. The
 publisher loads the existing Cloud Secret block
 `fastmcp-triage-gh-token`. Agent roles receive no GitHub write credential.
 

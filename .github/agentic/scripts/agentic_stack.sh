@@ -25,7 +25,22 @@ case "${1:-}" in
     }
     FASTMCP_AGENTIC_REF=$revision uv run --locked prefect --no-prompt deploy \
       --prefect-file prefect.yaml \
-      --name cloud-stack-batch --name cloud-stack-validation --name cloud-contribution-verification
+      --name cloud-stack-batch --name cloud-stack-validation --name cloud-contribution-verification --name cloud-triage-intake
+    ;;
+  intake)
+    config=${2:?intake configuration JSON file required}
+    runtime=${3:?pinned runtime JSON file required}
+    controller=${4:?managed controller deployment UUID required}
+    deployment=${5:?managed intake deployment UUID required}
+    operation=${6:?stable operation id required; reuse after an uncertain response}
+    [[ $controller =~ ^[0-9a-f-]{36}$ && $deployment =~ ^[0-9a-f-]{36}$ ]] || exit 2
+    [[ $operation =~ ^[a-z0-9-]{1,64}$ ]] || exit 2
+    scratch=$(mktemp -d)
+    trap 'rm -rf "$scratch"' EXIT
+    jq -n --slurpfile config "$config" --slurpfile runtime "$runtime" \
+      --arg controller "$controller" --arg operation "$operation" \
+      '{name:$operation,idempotency_key:("fastmcp-intake-"+$operation),parameters:{config:$config[0],runtime:$runtime[0],controller_id:$controller}}' > "$scratch/request.json"
+    api POST "/deployments/$deployment/create_flow_run" --data "@$scratch/request.json"
     ;;
   run)
     batch=${2:?batch JSON file required}
@@ -53,7 +68,7 @@ case "${1:-}" in
     api POST /artifacts/filter --data "@$scratch/filter.json" | jq -e 'if length==1 then .[0].data else error("Final review bins not available; inspect the run and retained stage artifacts") end'
     ;;
   *)
-    echo 'Usage: agentic_stack.sh validate | register | run BATCH RUNTIME DEPLOYMENT | results RUN' >&2
+    echo 'Usage: agentic_stack.sh validate | register | intake CONFIG RUNTIME CONTROLLER DEPLOYMENT OPERATION | run BATCH RUNTIME DEPLOYMENT | results RUN' >&2
     exit 2
     ;;
 esac

@@ -17,7 +17,9 @@ from prefect.context import FlowRunContext
 from prefect.states import Completed
 
 from flows.agentic_existing_review import verify_existing
+from flows.agentic_freshness import revalidate
 from flows.agentic_intake import route_intake
+from flows.agentic_review_queue import retain_review_queue
 from flows.agentic_stack import StackLayer, StackSpec, digest, read_stack_artifact
 from flows.agentic_stack_plans import Review
 from flows.agentic_stack_policy import Batch, Group, publication_revision
@@ -275,6 +277,7 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
     )
     previous_result = saved(owner, f"{batch.id}-review-bins")
     if previous_result is not None:
+        retain_review_queue(owner, previous_result)
         return previous_result
     actor = identities()
     bins: dict[str, list] = {
@@ -550,7 +553,20 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
         "agent_runs": calls,
         "usage": usage,
     }
+    branches = {
+        item.issue_number: group.branch
+        for group in batch.groups
+        for item in group.items
+        if item.mode != "fix"
+    }
+    originals = {}
+    for number in branches:
+        intake = saved(owner, f"{batch.id}-issue-{number}-intake")
+        if intake is not None:
+            originals[number] = intake["evidence"]
+    result = revalidate(result, originals, branches, collect)
     record(owner, f"{batch.id}-review-bins", result)
+    retain_review_queue(owner, result)
     return result
 
 
