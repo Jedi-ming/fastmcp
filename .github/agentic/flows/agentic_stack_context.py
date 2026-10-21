@@ -159,7 +159,7 @@ def assessment_context(item: dict, read: Read) -> dict:
         result["review_comments"] = discussion(pr.get("review_comments", []))
         result["timeline"] = events(pr.get("timeline", []))
         result["ci"] = checks(pr)
-        if pr["state"] == "open":
+        if not pr.get("merged", False):
             result["revision_evidence"] = revisions(pr, read)
         evidence["prs"].append(result)
     projected = {
@@ -167,7 +167,7 @@ def assessment_context(item: dict, read: Read) -> dict:
         "route": item["route"],
         "group_rationale": item["group_rationale"],
         "retained_intake_sha256": digest(raw),
-        "context_policy": "Full discussion text is preserved. Timelines contain event and source identities rather than repeated issue bodies; successful checks are counted. The complete original intake is retained separately. Missing or bounded patches are explicit. Verification work belongs to agents, not maintainer questions.",
+        "context_policy": "Full discussion text is preserved. Timelines contain event and source identities rather than repeated issue bodies; successful checks are counted. The complete original intake is retained separately. Revision evidence covers open and closed unmerged contributions; closure does not supersede current-head review. Missing or bounded patches are explicit. Verification work belongs to agents, not maintainer questions.",
     }
     if len(json.dumps(projected).encode()) > 160000:
         raise ValueError("Assessment context exceeds 160 KB; narrow the investigation")

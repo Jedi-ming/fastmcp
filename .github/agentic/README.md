@@ -20,7 +20,7 @@ contribution gates.
 
 The original intake remains an immutable artifact. Assessment receives a compact
 view with full discussion text, event identities instead of repeated issue bodies,
-and summarized successful checks. For open contributions it also receives bounded
+and summarized successful checks. For unmerged contributions it also receives bounded
 current diffs and changes since the original reviewed commits. Moved heads stop
 collection; missing patches and comparison limits are explicit. A stale review
 does not establish a current defect, and diff inspection does not count as a test.
@@ -59,7 +59,11 @@ evidence: distinguish assignment-gate closure from explicit maintainer rejection
 or supersession. See [maintenance history](docs/fastmcp-maintenance-history.md) and
 [architecture decisions](docs/agentic-stack-architecture.md).
 
-Existing-contribution assessments now dispatch to `cloud-contribution-verification`.
+Existing-contribution assessments dispatch to `cloud-contribution-verification`.
+An unmerged contribution can be verified while closed, including assignment-gated
+PRs; verification does not reopen it. Its current diff and changes since review
+are supplied to assessment just as for an open contribution. Merged contributions
+remain in the history assessment without launching verification of their old heads.
 The verifier fetches immutable commits, derives changed test modules from their
 merge base, and runs them on both the pinned current release target and proposed
 head. Optional independent

@@ -72,6 +72,37 @@ def summary(result: dict) -> dict:
     }
 
 
+def verification_specs(
+    group: Group, item: dict, probes: dict[str, str]
+) -> list[VerificationSpec]:
+    evidence = item["evidence"]
+    selected = {pr["number"] for pr in item["route"].get("pull_requests", [])}
+    contributions = [pr for pr in evidence["prs"] if pr["number"] in selected]
+    if not selected or {pr["number"] for pr in contributions} != selected:
+        raise ValueError("Selected contribution evidence is missing")
+    prs = [pr for pr in contributions if not pr["merged"]]
+    if len(prs) > 3:
+        raise ValueError("Existing verification supports at most three contributions")
+    if probes and len(prs) != 1:
+        raise ValueError("Independent probes require one selected contribution")
+    specs = []
+    for pr in prs:
+        if pr["base_ref"] != group.branch:
+            raise ValueError("Existing contribution targets a different release line")
+        specs.append(
+            VerificationSpec(
+                issue_number=evidence["issue"]["number"],
+                pr_number=pr["number"],
+                head_sha=pr["head_sha"],
+                trunk_sha=group.base_sha,
+                trunk_ref=group.branch,
+                evidence_revision=publication_revision(evidence),
+                probes=probes,
+            )
+        )
+    return specs
+
+
 @task(retries=2, retry_delay_seconds=[2, 5], persist_result=False)
 def verify_existing(
     owner: UUID,
@@ -93,34 +124,14 @@ def verify_existing(
         if previous["binding"] != binding:
             raise ValueError("Verification stage inputs changed")
         return previous["outcome"]
-    if runtime.verification_id is None:
-        raise ValueError(
-            "Existing contributions require a configured managed verification deployment"
-        )
     evidence = item["evidence"]
-    selected = {pr["number"] for pr in item["route"].get("pull_requests", [])}
-    prs = [
-        pr
-        for pr in evidence["prs"]
-        if pr["state"] == "open" and pr["number"] in selected
-    ]
-    if not 1 <= len(prs) <= 3:
-        raise ValueError("Existing verification needs one to three open contributions")
-    if probes and len(prs) != 1:
-        raise ValueError("Independent probes require one selected open contribution")
+    specs = verification_specs(group, item, probes)
     results = []
-    for pr in prs:
-        if pr["base_ref"] != group.branch:
-            raise ValueError("Existing contribution targets a different release line")
-        spec = VerificationSpec(
-            issue_number=evidence["issue"]["number"],
-            pr_number=pr["number"],
-            head_sha=pr["head_sha"],
-            trunk_sha=group.base_sha,
-            trunk_ref=group.branch,
-            evidence_revision=publication_revision(evidence),
-            probes=probes,
-        )
+    for spec in specs:
+        if runtime.verification_id is None:
+            raise ValueError(
+                "Existing contributions require a configured managed verification deployment"
+            )
         owner_alive(owner, batch.expires_at)
         with get_client(sync_client=True) as client:
             deployment = client.read_deployment(runtime.verification_id)
@@ -136,7 +147,7 @@ def verify_existing(
             )
         record(
             owner,
-            f"{batch.id}-{stage}-pr-{pr['number']}-verification",
+            f"{batch.id}-{stage}-pr-{spec.pr_number}-verification",
             {"run_id": str(run.id), "spec": spec.model_dump(mode="json")},
         )
         while True:
@@ -153,16 +164,22 @@ def verify_existing(
         )
     current = collect(evidence["issue"]["number"], group.branch)
     change = change_kind(evidence, current)
+    status = "verification_recorded" if results else "history_review_recorded"
+    next_step = (
+        "Review executed tests and failures against the established contract; full-suite and composition checks remain separate"
+        if results
+        else "Review the assessment of merged contributions and subsequent history; no unmerged contribution was sent to verification"
+    )
+    if change != "unchanged":
+        status, next_step = change, "Refresh changed evidence"
     review = {
         "issue_number": evidence["issue"]["number"],
         "assessment": item["assessment"],
         "route": item["route"],
         "verification": results,
-        "status": change if change != "unchanged" else "verification_recorded",
+        "status": status,
         "merge_ready": False,
-        "next_step": "Refresh changed evidence"
-        if change != "unchanged"
-        else "Review executed tests and failures against the established contract; full-suite and composition checks remain separate",
+        "next_step": next_step,
     }
     outcome = {"review": review, "observed": current}
     record(owner, outcome_key, {"binding": binding, "outcome": outcome})

@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from flows.agentic_existing_review import verification_specs
 from flows.agentic_pr_verification import (
     VerificationSpec,
     environment,
@@ -15,6 +16,7 @@ from flows.agentic_pr_verification import (
     pytest_result,
     verify,
 )
+from flows.agentic_stack_policy import Group
 
 
 def commit(repo: Path, message: str) -> str:
@@ -27,7 +29,10 @@ def commit(repo: Path, message: str) -> str:
     ).strip()
 
 
-def test_real_base_head_execution_detects_fix_and_independent_regression(tmp_path):
+@pytest.mark.parametrize("state", ["open", "closed"])
+def test_real_base_head_execution_detects_fix_and_independent_regression(
+    tmp_path, state, evidence
+):
     repo = tmp_path / "origin"
     repo.mkdir()
     for args in (
@@ -55,17 +60,40 @@ def test_real_base_head_execution_detects_fix_and_independent_regression(tmp_pat
     trunk = commit(repo, "Advance target independently")
     directory = tmp_path / "verification"
     directory.mkdir()
-    spec = VerificationSpec(
-        issue_number=1,
-        pr_number=2,
-        head_sha=head,
-        trunk_sha=trunk,
-        trunk_ref="main",
-        evidence_revision="a" * 64,
-        probes={
+    group = Group(
+        name="contribution",
+        rationale="Review an existing contribution without replacing or reopening it",
+        branch="main",
+        base_sha=trunk,
+        items=[{"issue_number": 1, "mode": "mre"}],
+    )
+    item = {
+        "evidence": {
+            **evidence,
+            "stacks": [],
+            "issue": {"number": 1},
+            "prs": [
+                {
+                    "number": 2,
+                    "state": state,
+                    "merged": False,
+                    "head_sha": head,
+                    "base_ref": "main",
+                },
+                {"number": 3, "state": "closed", "merged": True},
+            ],
+        },
+        "route": {"pull_requests": [{"number": 2}, {"number": 3}]},
+    }
+    specs = verification_specs(
+        group,
+        item,
+        {
             "tests/agentic_probes/test_flag.py": "from implementation import flag\ndef test_flag_type():\n    assert type(flag) is bool\n"
         },
     )
+    assert len(specs) == 1
+    spec = specs[0]
     result = verify(spec, directory, str(repo))
     assert result["status"] == "verification_recorded"
     assert result["merge_base_sha"] == base

@@ -6,10 +6,35 @@ from prefect.client.schemas.actions import ArtifactCreate
 from prefect.states import Completed
 from prefect.testing.utilities import prefect_test_harness
 
-from flows.agentic_existing_review import verification_result
+from flows.agentic_existing_review import verification_result, verification_specs
 from flows.agentic_pr_verification import VerificationSpec, verify_contribution
 from flows.agentic_stack import digest
+from flows.agentic_stack_policy import Group
 from flows.agentic_stack_runtime import AgentPlan, Runtime
+
+
+def test_merged_history_is_not_verified_and_other_release_lines_are_not_substituted(
+    evidence,
+):
+    group = Group(
+        name="history",
+        rationale="Preserve contribution history",
+        branch="main",
+        base_sha="a" * 40,
+        items=[{"issue_number": 2692, "mode": "mre"}],
+    )
+    pr = {"number": 2, "state": "closed", "merged": True, "base_ref": "release/3.x"}
+    item = {
+        "evidence": {**evidence, "stacks": [], "prs": [pr]},
+        "route": {"pull_requests": [{"number": 2}]},
+    }
+    assert verification_specs(group, item, {}) == []
+    pr["merged"] = False
+    with pytest.raises(ValueError, match="different release line"):
+        verification_specs(group, item, {})
+    item["route"]["pull_requests"].append({"number": 3})
+    with pytest.raises(ValueError, match="evidence is missing"):
+        verification_specs(group, item, {})
 
 
 def test_verification_handoff_binds_real_run_deployment_and_inputs():

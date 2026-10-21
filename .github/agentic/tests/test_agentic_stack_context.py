@@ -55,7 +55,8 @@ def change(patch):
     }
 
 
-def test_original_review_revision_and_human_history_survive_projection(source):
+@pytest.mark.parametrize("state", ["open", "closed"])
+def test_original_review_revision_and_human_history_survive_projection(source, state):
     responses, read = source
     responses[f"/repos/PrefectHQ/fastmcp/compare/{BASE}...{HEAD}?per_page=100"] = (
         change("+current implementation")
@@ -87,7 +88,8 @@ def test_original_review_revision_and_human_history_survive_projection(source):
         "prs": [
             {
                 "number": 10,
-                "state": "open",
+                "state": state,
+                "merged": False,
                 "base_sha": BASE,
                 "head_sha": HEAD,
                 "updated_at": "now",
