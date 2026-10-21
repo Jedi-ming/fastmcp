@@ -14,6 +14,15 @@ claims, security reports and outstanding reproduction requests before model work
 It never writes labels. Existing automation retains ownership of its timers and
 contribution gates.
 
+The original intake remains an immutable artifact. Assessment receives a compact
+view with full discussion text, event identities instead of repeated issue bodies,
+and summarized successful checks. For open contributions it also receives bounded
+current diffs and changes since the original reviewed commits. Moved heads stop
+collection; missing patches and comparison limits are explicit. A stale review
+does not establish a current defect, and diff inspection does not count as a test.
+The assessor loads contribution-review skills; test-authoring guidance is reserved
+for the reproduction, preparation and independent review roles.
+
 Explicit Luna roles use complete repository skills pinned to the source revision:
 assessment, reproduction, preparation and independent review. Each role has one
 attempt and a 180-second platform limit. The batch allows one repair round and a

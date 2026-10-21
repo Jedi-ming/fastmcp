@@ -22,6 +22,7 @@ from prefect.utilities.asyncutils import run_coro_as_sync
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from flows.agentic_stack import digest
+from flows.agentic_stack_context import assessment_context as project_assessment
 from flows.agentic_stack_plans import OUTPUTS
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -228,6 +229,32 @@ def skills(base_sha: str) -> dict:
         timeout=180,
     )
     return json.loads(result.stdout)
+
+
+@task(retries=2, retry_delay_seconds=[2, 5], persist_result=False)
+def assessment_context(item: dict) -> dict:
+    environment = {
+        name: value
+        for name, value in os.environ.items()
+        if name not in {"PREFECT_API_KEY", "PREFECT_API_AUTH_STRING", "GITHUB_TOKEN"}
+    }
+    environment["GH_TOKEN"] = secret_sync("fastmcp-triage-gh-token")
+    cache: dict[str, dict] = {}
+
+    def read(endpoint: str) -> dict:
+        if endpoint not in cache:
+            result = subprocess.run(
+                ["gh", "api", endpoint],
+                env=environment,
+                text=True,
+                capture_output=True,
+                check=True,
+                timeout=30,
+            )
+            cache[endpoint] = json.loads(result.stdout)
+        return cache[endpoint]
+
+    return project_assessment(item, read)
 
 
 def judge(

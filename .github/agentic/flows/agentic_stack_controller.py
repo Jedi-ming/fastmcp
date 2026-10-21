@@ -24,6 +24,7 @@ from flows.agentic_stack_publication import GitHub, reconcile_stack
 from flows.agentic_stack_runtime import (
     Runtime,
     api,
+    assessment_context,
     collect,
     intake_tools,
     judge,
@@ -361,7 +362,14 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                     if route["route"] == "review_existing"
                     else bundles["assess_instructions"]
                 )
-                assessment, _ = ask("assess", bundle, item, f"issue-{number}-assess")
+                assessment_key = f"{batch.id}-issue-{number}-assessment-context"
+                projected = saved(owner, assessment_key)
+                if projected is None:
+                    projected = assessment_context(item)
+                    record(owner, assessment_key, projected)
+                assessment, _ = ask(
+                    "assess", bundle, projected, f"issue-{number}-assess"
+                )
                 item["assessment"] = assessment
                 if (
                     assessment["decision"] != "reproduce"

@@ -91,6 +91,12 @@ Missing evidence returns one precise request. Low-value leaf fixes may return pr
 the actual tradeoff even when the bug is real. Preserve human interventions and existing
 label workflow ownership. A tractable defect in an established supported contract may
 return reproduce. A documentation correction needs an executable supported setup.
+Use each open PR's revision_evidence: current_diff and changes_since_review bind code
+and reviews to exact commits. Inspect later patches before repeating an older finding;
+no author reply or unresolved review status does not establish an unfixed current defect.
+Distinguish explicit supersession from contribution-gate closure. Honor route holds.
+Treat incomplete diffs or absent checks as machine verification work to route, not a request
+for the maintainer to fetch code or run tests. Do not claim tests ran from diff inspection.
 No public action follows your recommendation automatically. question names the precise
 maintainer choice, or is empty when none is needed.""",
     "reproduce": """Use the assessment and complete evidence in context. Fetch the pinned base,
