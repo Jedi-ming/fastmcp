@@ -193,3 +193,46 @@ def test_probe_cannot_replace_test_configuration(path):
             evidence_revision="c" * 64,
             probes={path: "pass"},
         )
+
+
+def test_old_contribution_fetches_history_before_computing_changed_tests(tmp_path):
+    repo = tmp_path / "origin"
+    repo.mkdir()
+    for args in (
+        ("init",),
+        ("config", "user.name", "Test"),
+        ("config", "user.email", "test@example.invalid"),
+    ):
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+    (repo / "implementation.py").write_text("value = 1\n")
+    base = commit(repo, "Common ancestor")
+    (repo / "implementation.py").write_text("value = 2\n")
+    head = commit(repo, "Old contribution without tests")
+    tree = subprocess.check_output(
+        ["git", "rev-parse", f"{base}^{{tree}}"], cwd=repo, text=True
+    ).strip()
+    trunk = base
+    for number in range(270):
+        trunk = subprocess.check_output(
+            ["git", "commit-tree", tree, "-p", trunk, "-m", f"Advance {number}"],
+            cwd=repo,
+            text=True,
+        ).strip()
+    subprocess.run(
+        ["git", "update-ref", "refs/heads/trunk", trunk], cwd=repo, check=True
+    )
+    spec = VerificationSpec(
+        issue_number=1,
+        pr_number=2,
+        head_sha=head,
+        trunk_sha=trunk,
+        trunk_ref="main",
+        evidence_revision="c" * 64,
+    )
+    directory = tmp_path / "verification"
+    directory.mkdir()
+    result = verify(spec, directory, str(repo))
+    assert result["merge_base_sha"] == base
+    assert result["baseline_sha"] == trunk
+    assert result["status"] == "evidence_needed"
+    assert result["changed_tests"] == []

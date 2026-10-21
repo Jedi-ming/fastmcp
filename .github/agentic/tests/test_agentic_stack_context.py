@@ -153,3 +153,25 @@ def test_missing_checks_and_failed_gates_cannot_become_green():
     assert not result["absent"]
     assert result["check_counts"] == {"success": 1, "failure": 1}
     assert result["checks"] == [{"name": "issue-gate", "conclusion": "failure"}]
+
+
+def test_comparison_metadata_cannot_overrun_the_model_context(source):
+    responses, read = source
+    endpoint = f"/repos/PrefectHQ/fastmcp/compare/{REVIEW}...{HEAD}?per_page=100"
+    responses[endpoint] = {
+        **change("+fixed"),
+        "total_commits": 100,
+        "commits": [
+            {"sha": f"{n:040x}", "commit": {"message": "Long history\n" * 500}}
+            for n in range(100)
+        ],
+    }
+    result = comparison(read, REVIEW, HEAD, 12000)
+    assert len(json.dumps(result).encode()) <= 16096
+    assert result["complete"] is False
+    assert result["base_sha"] == REVIEW and result["head_sha"] == HEAD
+    assert result["comparison_url"].endswith(f"{REVIEW}...{HEAD}")
+    assert result["details_omitted"] == "comparison_exceeds_context_budget"
+    assert result["total_commits"] == 100
+    assert result["returned_file_count"] == 1
+    assert not result["tests_executed"]

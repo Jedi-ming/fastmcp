@@ -112,6 +112,20 @@ def git(directory: Path, env: dict[str, str], *args: str) -> str:
     return result["output_tail"].strip()
 
 
+def merge_base(directory: Path, env: dict[str, str], head: str, trunk: str) -> str:
+    result = execute(["git", "merge-base", head, trunk], directory, env)
+    if (
+        result["returncode"] == 1
+        and not result["timed_out"]
+        and git(directory, env, "rev-parse", "--is-shallow-repository") == "true"
+    ):
+        git(directory, env, "fetch", "--unshallow", "origin", head, trunk)
+        return git(directory, env, "merge-base", head, trunk)
+    if result["returncode"] or result["output_truncated"]:
+        raise RuntimeError(f"Git verification failed: {result}")
+    return result["output_tail"].strip()
+
+
 def pytest_result(command: dict, report: Path) -> dict:
     result = {**command, "status": "environment_failure", "cases": []}
     if command["timed_out"] or command["returncode"] not in {0, 1}:
@@ -202,7 +216,7 @@ def verify(
     git(head, env, "remote", "add", "origin", source)
     git(head, env, "fetch", "--depth=256", "origin", spec.head_sha, spec.trunk_sha)
     git(head, env, "checkout", "--detach", spec.head_sha)
-    base_sha = git(head, env, "merge-base", spec.head_sha, spec.trunk_sha)
+    base_sha = merge_base(head, env, spec.head_sha, spec.trunk_sha)
     changed = git(
         head, env, "diff", "--name-only", "--diff-filter=AM", base_sha, spec.head_sha
     ).splitlines()

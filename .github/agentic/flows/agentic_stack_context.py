@@ -96,7 +96,7 @@ def comparison(read: Read, base: str, head: str, budget: int) -> dict:
             omitted.append(file["filename"])
         files.append(item)
     commits = value.get("commits", [])
-    return {
+    result = {
         "base_sha": base,
         "head_sha": head,
         "status": value["status"],
@@ -112,6 +112,17 @@ def comparison(read: Read, base: str, head: str, budget: int) -> dict:
         and value.get("total_commits") == len(commits),
         "tests_executed": False,
     }
+    if len(json.dumps(result).encode()) > budget + 4096:
+        return {
+            **fields(result, "base_sha head_sha status ahead_by behind_by"),
+            "complete": False,
+            "details_omitted": "comparison_exceeds_context_budget",
+            "comparison_url": f"https://github.com/PrefectHQ/fastmcp/compare/{base}...{head}",
+            "total_commits": value.get("total_commits"),
+            "returned_file_count": len(files),
+            "tests_executed": False,
+        }
+    return result
 
 
 def revisions(pr: dict, read: Read) -> dict:
