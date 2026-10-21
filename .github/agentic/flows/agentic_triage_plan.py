@@ -84,7 +84,8 @@ def build_triage_plan(models: dict, verify_id: UUID, finalize_id: UUID) -> dict:
         {"result": {"schema": Reproduction.model_json_schema()}},
         "The request contains instructions and context. References below to instructions "
         "and context mean request.instructions and request.context. The separate assessment "
-        "input is the assessment for this exact issue.\n"
+        "input is the assessment for this exact issue. If request.allowed is false, do not use "
+        "tools or reproduce: return environment_failure explaining the disallowed branch.\n"
         + COMMON
         + "\n"
         + OBJECTIVES["reproduce"],
@@ -142,7 +143,7 @@ def build_triage_plan(models: dict, verify_id: UUID, finalize_id: UUID) -> dict:
         "inputs": {
             "parameters": {**deepcopy(object_port), "required": True},
             "assess_request": {**deepcopy(object_port), "required": True},
-            "reproduce_request": deepcopy(object_port),
+            "reproduce_request": {**deepcopy(object_port), "required": True},
         },
         "nodes": {
             "assess": assess,

@@ -65,12 +65,12 @@ def run_native_stage(
     if intent is None:
         parameters = {
             "parameters": {"ref": ref.model_dump(mode="json")},
+            "reproduce_request": {
+                **admission.reproduce_request,
+                "allowed": admission.requested.mode != "review"
+                and admission.item["route"]["route"] != "review_existing",
+            },
         }
-        if (
-            admission.requested.mode != "review"
-            and admission.item["route"]["route"] != "review_existing"
-        ):
-            parameters["reproduce_request"] = admission.reproduce_request
         parameters["assess_request"] = admission.request
         intent = {
             "parameters": parameters,
