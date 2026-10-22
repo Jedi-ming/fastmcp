@@ -11,6 +11,7 @@ import time
 import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from prefect import task
@@ -34,6 +35,21 @@ def secret_sync(name: str) -> str:
     if not isinstance(value, str):
         raise TypeError("Expected a text Secret block")
     return value
+
+
+def gh_api(endpoint: str, environment: dict[str, str], timeout: int) -> Any:
+    result = subprocess.run(
+        ["gh", "api", endpoint],
+        env=environment,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+    )
+    if result.returncode:
+        raise RuntimeError(
+            f"gh api {endpoint} exited {result.returncode}: {result.stderr.strip()[-500:]}"
+        )
+    return json.loads(result.stdout)
 
 
 @task(
@@ -253,15 +269,7 @@ def assessment_context(item: dict) -> dict:
 
     def read(endpoint: str) -> dict:
         if endpoint not in cache:
-            result = subprocess.run(
-                ["gh", "api", endpoint],
-                env=environment,
-                text=True,
-                capture_output=True,
-                check=True,
-                timeout=30,
-            )
-            cache[endpoint] = json.loads(result.stdout)
+            cache[endpoint] = gh_api(endpoint, environment, 30)
         return cache[endpoint]
 
     return project_assessment(item, read)

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 import os
-import subprocess
 import tempfile
 import time
 from collections.abc import Callable
@@ -28,7 +26,13 @@ from flows.agentic_freshness import revalidate
 from flows.agentic_intake import evidence_revision
 from flows.agentic_review_queue import plain, retain_markdown, retain_review_queue
 from flows.agentic_stack_policy import Batch
-from flows.agentic_stack_runtime import Runtime, collect, intake_tools, secret_sync
+from flows.agentic_stack_runtime import (
+    Runtime,
+    collect,
+    gh_api,
+    intake_tools,
+    secret_sync,
+)
 
 
 def latest(key: str, owner: UUID | None = None) -> dict | None:
@@ -84,15 +88,7 @@ def github(endpoint: str) -> object:
         if k not in {"PREFECT_API_KEY", "PREFECT_API_AUTH_STRING", "GITHUB_TOKEN"}
     }
     environment["GH_TOKEN"] = secret_sync("fastmcp-triage-gh-token")
-    result = subprocess.run(
-        ["gh", "api", endpoint],
-        env=environment,
-        capture_output=True,
-        text=True,
-        check=True,
-        timeout=60,
-    )
-    return json.loads(result.stdout)
+    return gh_api(endpoint, environment, 60)
 
 
 def admit(

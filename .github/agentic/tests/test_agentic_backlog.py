@@ -16,7 +16,7 @@ from prefect.testing.utilities import prefect_test_harness
 from flows.agentic_backlog import Intake, due, inventory, settle
 from flows.agentic_freshness import revalidate
 from flows.agentic_intake import evidence_revision
-from flows.agentic_stack_runtime import AgentPlan, Runtime, record
+from flows.agentic_stack_runtime import AgentPlan, Runtime, gh_api, record
 from flows.agentic_triage import admit, checkpoint, dispatch, finish, latest
 
 
@@ -315,3 +315,12 @@ def test_queue_recovers_same_controller_and_commits_only_saved_outcomes(
         )
         assert len(requests) == before
         assert checkpoint(config.scope()) == (replacement, state)
+
+
+def test_gh_api_failure_reports_stderr(tmp_path):
+    gh = tmp_path / "gh"
+    gh.write_text("#!/bin/sh\necho 'gh: Bad credentials (HTTP 401)' >&2\nexit 1\n")
+    gh.chmod(0o755)
+
+    with pytest.raises(RuntimeError, match=r"issues/2026 exited 1: .*Bad credentials"):
+        gh_api("repos/PrefectHQ/fastmcp/issues/2026", {"PATH": str(tmp_path)}, 5)
