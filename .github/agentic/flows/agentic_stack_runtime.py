@@ -37,9 +37,11 @@ def secret_sync(name: str) -> str:
     return value
 
 
-def gh_api(endpoint: str, environment: dict[str, str], timeout: int) -> Any:
+def run_json(
+    command: list[str], environment: dict[str, str] | None, timeout: int
+) -> Any:
     result = subprocess.run(
-        ["gh", "api", endpoint],
+        command,
         env=environment,
         text=True,
         capture_output=True,
@@ -47,9 +49,14 @@ def gh_api(endpoint: str, environment: dict[str, str], timeout: int) -> Any:
     )
     if result.returncode:
         raise RuntimeError(
-            f"gh api {endpoint} exited {result.returncode}: {result.stderr.strip()[-500:]}"
+            f"{' '.join(command[:4])} exited {result.returncode}: "
+            f"{result.stderr.strip()[-500:]}"
         )
     return json.loads(result.stdout)
+
+
+def gh_api(endpoint: str, environment: dict[str, str], timeout: int) -> Any:
+    return run_json(["gh", "api", endpoint], environment, timeout)
 
 
 @task(
@@ -217,7 +224,7 @@ def collect(issue: int, branch: str, publication: bool = False) -> dict:
         if name not in {"PREFECT_API_KEY", "PREFECT_API_AUTH_STRING", "GITHUB_TOKEN"}
     }
     environment["GH_TOKEN"] = secret_sync("fastmcp-triage-gh-token")
-    result = subprocess.run(
+    return run_json(
         [
             "bash",
             str(ROOT / "scripts/collect_fastmcp_stack_evidence.sh"),
@@ -225,13 +232,9 @@ def collect(issue: int, branch: str, publication: bool = False) -> dict:
             branch,
             "publication" if publication else "route",
         ],
-        env=environment,
-        text=True,
-        capture_output=True,
-        check=True,
-        timeout=240,
+        environment,
+        240,
     )
-    return json.loads(result.stdout)
 
 
 @task(
@@ -241,7 +244,7 @@ def collect(issue: int, branch: str, publication: bool = False) -> dict:
     persist_result=False,
 )
 def skills(base_sha: str) -> dict:
-    result = subprocess.run(
+    return run_json(
         [
             "bash",
             str(ROOT / "scripts/load_fastmcp_skills.sh"),
@@ -249,12 +252,9 @@ def skills(base_sha: str) -> dict:
             "https://github.com/PrefectHQ/fastmcp.git",
             str(ROOT / "workflows/stack-skills.json"),
         ],
-        text=True,
-        capture_output=True,
-        check=True,
-        timeout=180,
+        None,
+        180,
     )
-    return json.loads(result.stdout)
 
 
 @task(retries=2, retry_delay_seconds=[2, 5], persist_result=False)

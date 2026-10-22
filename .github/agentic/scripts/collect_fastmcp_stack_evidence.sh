@@ -63,7 +63,9 @@ while IFS= read -r query; do
   }
   jq --arg query "$query" --slurpfile result "$scratch/search.json" '. + [{query:$query,total_count:$result[0].total_count,complete:true}]' "$scratch/searches.json" > "$scratch/next.json"
   mv "$scratch/next.json" "$scratch/searches.json"
-  jq -s '.[0]+.[1].items | unique_by(.number)' "$scratch/matches.json" "$scratch/search.json" > "$scratch/next.json"
+  jq -s --arg number "$issue" --argjson by_number "$([[ $query == *" is:pr $issue in:body" ]] && echo true || echo false)" '
+    .[0] + [.[1].items[] | select(($by_number | not) or ((.body // "") | test("(#|/issues/|/pull/)" + $number + "(?![0-9])")))]
+    | unique_by(.number)' "$scratch/matches.json" "$scratch/search.json" > "$scratch/next.json"
   mv "$scratch/next.json" "$scratch/matches.json"
   if [[ $search_mode == route ]] && jq -e --arg number "$issue" 'any(.items[]; (.body // "") | test("(?i)(fix(es|ed)?|close[sd]?|resolve[sd]?)\\s+#"+$number+"(?![0-9])"))' "$scratch/search.json" >/dev/null; then
     break
