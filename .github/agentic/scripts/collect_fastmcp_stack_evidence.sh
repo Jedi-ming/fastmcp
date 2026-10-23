@@ -37,7 +37,7 @@ pages() {
 api "repos/$repo/issues/$issue" | jq '{number,title,body,state,html_url,updated_at,author_association,user:(.user|{id,login,type}),assignees:[.assignees[].login],labels:[.labels[].name],pull_request}' > "$scratch/issue.json"
 jq -e '.pull_request == null' "$scratch/issue.json" >/dev/null
 pages "repos/$repo/issues/$issue/comments" | jq '[.[]|{id,body,html_url,created_at,updated_at,author_association,user:(.user|{id,login,type})}]' > "$scratch/comments.json"
-pages "repos/$repo/issues/$issue/timeline" | jq '[.[]|{id,event,created_at,source,label,assignee,actor:(.actor|{id,login,type})}]' > "$scratch/timeline.json"
+pages "repos/$repo/issues/$issue/timeline" | jq '[.[]|{id,event,created_at,source:(.source|if .==null then null else {type,issue:(.issue|if .==null then null else {number,title,state,html_url,pull_request:(.pull_request!=null),repository:{full_name:.repository.full_name}} end)} end),label,assignee,actor:(.actor|{id,login,type})}]' > "$scratch/timeline.json"
 pages "repos/$repo/labels" | jq '[.[]|{name,description}]' > "$scratch/labels.json"
 pages "repos/$repo/stacks" > "$scratch/stacks.json"
 api "repos/$repo/commits/$base_ref" | jq -er '.sha' > "$scratch/base-sha"
@@ -74,6 +74,8 @@ done < "$scratch/queries"
 jq -nr --slurpfile timeline "$scratch/timeline.json" '
   [$timeline[0][] | .source.issue | select(.pull_request and (.repository.full_name == "PrefectHQ/fastmcp" or (.html_url|startswith("https://github.com/PrefectHQ/fastmcp/pull/")))) | .number] | unique[]
 ' > "$scratch/numbers"
+jq -r --arg number "$issue" '.[] | select((.body // "") | test("(#|/issues/|/pull/)" + $number + "(?![0-9])")) | .number' "$scratch/matches.json" >> "$scratch/numbers"
+sort -nu "$scratch/numbers" > "$scratch/linked"
 jq -r '.[].number' "$scratch/matches.json" >> "$scratch/numbers"
 sort -nu "$scratch/numbers" > "$scratch/unique-numbers"
 if (($(wc -l < "$scratch/unique-numbers") > 30)); then
@@ -84,8 +86,13 @@ printf '[]\n' > "$scratch/prs.json"
 while IFS= read -r number; do
   [[ -n $number ]] || continue
   api "repos/$repo/pulls/$number" | jq '{number,title,body,state,draft,merged,html_url,updated_at,user:(.user|{id,login,type}),labels:[.labels[].name],base_ref:.base.ref,base_sha:.base.sha,head_ref:.head.ref,head_sha:.head.sha,head_repository:.head.repo.full_name}' > "$scratch/pr.json"
+  if [[ $search_mode == route ]] && ! grep -qx "$number" "$scratch/linked"; then
+    jq -s '.[0]+[.[1]+{discussion_collected:false}]' "$scratch/prs.json" "$scratch/pr.json" > "$scratch/next.json"
+    mv "$scratch/next.json" "$scratch/prs.json"
+    continue
+  fi
   pages "repos/$repo/issues/$number/comments" | jq '[.[]|{id,body,html_url,created_at,updated_at,user:(.user|{id,login,type})}]' > "$scratch/pr-comments.json"
-  pages "repos/$repo/issues/$number/timeline" | jq '[.[]|{id,event,created_at,label,source,actor:(.actor|{id,login,type})}]' > "$scratch/pr-timeline.json"
+  pages "repos/$repo/issues/$number/timeline" | jq '[.[]|{id,event,created_at,label,source:(.source|if .==null then null else {type,issue:(.issue|if .==null then null else {number,title,state,html_url,pull_request:(.pull_request!=null),repository:{full_name:.repository.full_name}} end)} end),actor:(.actor|{id,login,type})}]' > "$scratch/pr-timeline.json"
   pages "repos/$repo/pulls/$number/reviews" | jq '[.[]|{id,state,body,submitted_at,commit_id,html_url,user:(.user|{id,login,type})}]' > "$scratch/pr-reviews.json"
   pages "repos/$repo/pulls/$number/comments" | jq '[.[]|{id,body,path,line,original_line,commit_id,original_commit_id,created_at,updated_at,html_url,in_reply_to_id,user:(.user|{id,login,type})}]' > "$scratch/pr-review-comments.json"
   head_sha=$(jq -er '.head_sha' "$scratch/pr.json")

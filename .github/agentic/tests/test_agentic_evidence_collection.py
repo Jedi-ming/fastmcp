@@ -54,9 +54,9 @@ def pr(number, body):
     }
 
 
-def test_numeric_search_ignores_prs_that_only_mention_the_number(tmp_path):
+def test_route_evidence_links_referencing_prs_and_summarizes_keyword_matches(tmp_path):
     repo = "repos/PrefectHQ/fastmcp"
-    linked = pr(9001, "Fixes #2026")
+    linked = pr(9001, "Related to #2026")
     unrelated = [
         {"number": n, "body": f"Released 2026-10-{n % 28 + 1:02d}"}
         for n in range(100, 140)
@@ -83,14 +83,15 @@ def test_numeric_search_ignores_prs_that_only_mention_the_number(tmp_path):
         "search:repo:PrefectHQ/fastmcp is:pr 2026 in:body": {
             "total_count": len(unrelated) + 1,
             "incomplete_results": False,
-            "items": [*unrelated, {"number": 9001, "body": "Fixes #2026"}],
+            "items": [*unrelated, {"number": 9001, "body": "Related to #2026"}],
         },
         'search:repo:PrefectHQ/fastmcp is:pr "ProxyClient" "serializes" "objects" "double"': {
-            "total_count": 0,
+            "total_count": 1,
             "incomplete_results": False,
-            "items": [],
+            "items": [{"number": 9100, "body": "Large unrelated ProxyClient work"}],
         },
         f"{repo}/pulls/9001": linked,
+        f"{repo}/pulls/9100": pr(9100, "Large unrelated ProxyClient work"),
         f"{repo}/issues/9001/comments": [],
         f"{repo}/issues/9001/timeline": [],
         f"{repo}/pulls/9001/reviews": [],
@@ -119,4 +120,7 @@ def test_numeric_search_ignores_prs_that_only_mention_the_number(tmp_path):
 
     assert result.returncode == 0, result.stderr
     evidence = json.loads(result.stdout)
-    assert [p["number"] for p in evidence["prs"]] == [9001]
+    assert [p["number"] for p in evidence["prs"]] == [9001, 9100]
+    full, summary = evidence["prs"]
+    assert "reviews" in full and "discussion_collected" not in full
+    assert summary["discussion_collected"] is False and "reviews" not in summary
