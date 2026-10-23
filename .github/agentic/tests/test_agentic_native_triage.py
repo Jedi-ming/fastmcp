@@ -17,6 +17,7 @@ from flows.agentic_triage_records import (
     AdmissionRef,
     assessed_item,
     read_assessment,
+    redirect_unadmitted,
     selected_output,
     worker_admission,
 )
@@ -91,6 +92,27 @@ def test_deterministic_admission_rejects_competing_or_review_only_reproduction()
             assessed_item(denied, ("reproduce", decision))
     with pytest.raises(ValueError, match="not admitted"):
         assessed_item(value, ("verify", {**decision, "decision": "existing_review"}))
+
+
+def test_verification_without_admitted_contribution_becomes_maintainer_decision():
+    value = admission()
+    finding = {
+        "decision": "existing_review",
+        "reason": "Already supported by strict_input_validation=False.",
+        "contract": "Server-wide validation opt-out",
+        "prior_art": ["Commit e036cba3"],
+        "question": "Close as already supported?",
+    }
+    branch, redirected = redirect_unadmitted(value, ("verify", finding))
+    assert (branch, assessment_branch(redirected)) == ("record", "record")
+    assert redirected["decision"] == "maintainer"
+    assert redirected["reason"].endswith(finding["reason"])
+    assert redirected["question"] == finding["question"]
+    assert assessed_item(value, (branch, redirected))["assessment"] == redirected
+    existing = value.model_copy(
+        update={"item": {**value.item, "route": {"route": "review_existing"}}}
+    )
+    assert redirect_unadmitted(existing, ("verify", finding)) == ("verify", finding)
 
 
 def test_native_records_reject_changed_admission_and_unrelated_assessment_runs():

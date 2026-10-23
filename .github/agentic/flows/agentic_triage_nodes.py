@@ -15,6 +15,7 @@ from flows.agentic_stack_runtime import intake_tools, record, saved
 from flows.agentic_triage_records import (
     AdmissionRef,
     assessed_item,
+    redirect_unadmitted,
     resolve_assessment,
     selected_output,
     worker_admission,
@@ -27,6 +28,8 @@ def triage_verify(ref: AdmissionRef) -> dict:
     output = resolve_assessment(admission, parent_id, parameters, observation)
     if output is None or output[0] != "verify":
         raise ValueError("Verification requires the selected verification branch")
+    if redirect_unadmitted(admission, output)[0] != "verify":
+        return {"status": "not_admitted"}
     item = assessed_item(admission, output)
     with tempfile.TemporaryDirectory(prefix="fastmcp-native-verify-") as temporary:
         intake_tools(Path(temporary))
@@ -62,6 +65,7 @@ def triage_finalize(ref: AdmissionRef) -> dict:
         "native_run_id": str(parent_id),
     }
     if output is not None:
+        output = redirect_unadmitted(admission, output)
         assessed_item(admission, output)
         branch, assessment = output
         if branch in {"record", "blocked"}:

@@ -153,6 +153,20 @@ def resolve_assessment(
     return read_assessment(run_id, plan, admission.request)
 
 
+def redirect_unadmitted(
+    admission: Admission, output: tuple[str, dict]
+) -> tuple[str, dict]:
+    branch, assessment = output
+    if branch != "verify" or admission.item["route"]["route"] == "review_existing":
+        return output
+    return "record", {
+        **assessment,
+        "decision": "maintainer",
+        "reason": "Assessment selected contribution verification, but intake admitted "
+        "no contribution to verify. " + assessment["reason"],
+    }
+
+
 def assessed_item(admission: Admission, output: tuple[str, dict]) -> dict:
     branch, assessment = output
     route = admission.item["route"]["route"]

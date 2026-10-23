@@ -73,7 +73,11 @@ def build_triage_plan(models: dict, verify_id: UUID, finalize_id: UUID) -> dict:
         + "\n"
         + OBJECTIVES["assess"]
         + "\nSelect the output matching your decision. In review-only mode, do not select "
-        "reproduce: record the specific remaining decision as maintainer instead.",
+        "reproduce: record the specific remaining decision as maintainer instead. "
+        "existing_review is only for a contribution listed in context.evidence.prs. When "
+        "the pinned base already resolves the report through a commit or existing option "
+        "and no contribution is listed, record maintainer with that evidence and a question "
+        "asking to confirm and close.",
     )
     reproduce = agent(
         "reproduce",
