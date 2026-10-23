@@ -77,9 +77,7 @@ async def test_server_namespace_rewrites_entries(tmp_path: Path) -> None:
 
 async def test_visibility_hides_skill_with_hidden_file(tmp_path: Path) -> None:
     provider = write_skills(tmp_path, "review", "deploy")
-    provider.add_transform(
-        Visibility(False, keys={"template:skill://deploy/{path*}@"})
-    )
+    provider.add_transform(Visibility(False, keys={"template:skill://deploy/{path*}@"}))
     server = skills_server(provider)
 
     await assert_serves(server, "skill://review/SKILL.md")
