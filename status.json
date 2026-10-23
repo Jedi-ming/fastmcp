@@ -1,7 +1,7 @@
 {
   "schema": "fastmcp-maintenance/1",
   "publisher": "fastmcp-actions",
-  "as_of": "2026-10-23T13:11:55Z",
+  "as_of": "2026-10-23T21:11:44Z",
   "automations": [
     {
       "id": "issue-link-gate",
@@ -73,7 +73,7 @@
       "evidence_url": "https://github.com/PrefectHQ/fastmcp/actions/workflows/marvin-label-triage.yml",
       "window": "7d",
       "counts": {
-        "succeeded": 206,
+        "succeeded": 207,
         "failed": 0
       },
       "daily": [
@@ -115,7 +115,7 @@
         },
         {
           "day": "2026-10-23",
-          "succeeded": 4,
+          "succeeded": 5,
           "failed": 0,
           "blocked": 0
         }
@@ -309,8 +309,8 @@
       "evidence_url": "https://github.com/PrefectHQ/fastmcp/actions/workflows/marvin-test-failure.yml",
       "window": "7d",
       "counts": {
-        "succeeded": 536,
-        "failed": 17
+        "succeeded": 558,
+        "failed": 18
       },
       "daily": [
         {
@@ -351,8 +351,8 @@
         },
         {
           "day": "2026-10-23",
-          "succeeded": 2,
-          "failed": 0,
+          "succeeded": 24,
+          "failed": 1,
           "blocked": 0
         }
       ]
@@ -605,13 +605,13 @@
           "number": 5195,
           "title": "Fix TokenCache handling for expired access tokens",
           "url": "https://github.com/PrefectHQ/fastmcp/pull/5195",
-          "age_days": 31
+          "age_days": 32
         },
         {
           "number": 5235,
           "title": "Fix OpenAISamplingHandler dropping tool results mixed with user content",
           "url": "https://github.com/PrefectHQ/fastmcp/pull/5235",
-          "age_days": 29
+          "age_days": 30
         },
         {
           "number": 5333,
@@ -623,7 +623,7 @@
           "number": 5380,
           "title": "Allow per-read cache hint overrides on ResourceResult ",
           "url": "https://github.com/PrefectHQ/fastmcp/pull/5380",
-          "age_days": 21
+          "age_days": 22
         },
         {
           "number": 5481,
@@ -635,7 +635,7 @@
           "number": 5487,
           "title": "Fix #5474: Namespaced mounts list non-hierarchical resource URIs but cannot read ",
           "url": "https://github.com/PrefectHQ/fastmcp/pull/5487",
-          "age_days": 17
+          "age_days": 18
         },
         {
           "number": 5509,
@@ -707,7 +707,7 @@
   "attention": {
     "schema": "fastmcp-attention/1",
     "repo": "PrefectHQ/fastmcp",
-    "as_of": "2026-10-23T13:10:00.938044+00:00",
+    "as_of": "2026-10-23T21:09:47.712182+00:00",
     "profile": "public-issue-signals",
     "judge": "jev",
     "assessment_model": "jev:jev-latest",
@@ -716,6 +716,105 @@
     "has_more": false,
     "selection": "newest open issues",
     "items": [
+      {
+        "number": 5971,
+        "title": "Proxy sends both the forwarded and the configured header when their names differ in case",
+        "url": "https://github.com/PrefectHQ/fastmcp/issues/5971",
+        "updated_at": "2026-10-22T15:37:17+00:00",
+        "score": 19.49,
+        "kind": "bug",
+        "judged": true,
+        "assessment": {
+          "kind": {
+            "bug": 1.0,
+            "regression": 0.0,
+            "feature": 0.0,
+            "question": 0.0,
+            "docs": 0.0,
+            "other": 0.0
+          },
+          "repro": 0.98,
+          "actionable": 1.0,
+          "severity": 0.9900000000000001,
+          "security": 0.95,
+          "spec": 0.28,
+          "downstream": 0.23
+        },
+        "input_digest": "1a6fb0f719ae9e30e518dcdd061b25772215e130180a8d33834056976e93902b",
+        "reasons": [
+          {
+            "signal": "security",
+            "text": "security-sensitive report",
+            "contribution": 3.8
+          },
+          {
+            "signal": "priority",
+            "text": "priority label",
+            "contribution": 3.0
+          },
+          {
+            "signal": "severity",
+            "text": "potential impact",
+            "contribution": 2.97
+          },
+          {
+            "signal": "security_label",
+            "text": "security label",
+            "contribution": 2.5
+          },
+          {
+            "signal": "regression",
+            "text": "possible regression",
+            "contribution": 2.35
+          },
+          {
+            "signal": "neglect",
+            "text": "awaiting maintainer reply",
+            "contribution": 1.5
+          },
+          {
+            "signal": "handled",
+            "text": "assigned or linked to a fix",
+            "contribution": -1.5
+          },
+          {
+            "signal": "repro",
+            "text": "reproduction provided",
+            "contribution": 1.47
+          },
+          {
+            "signal": "release_proximity",
+            "text": "reported near a relevant release",
+            "contribution": 1.41
+          },
+          {
+            "signal": "actionable",
+            "text": "actionable report",
+            "contribution": 1.0
+          },
+          {
+            "signal": "engagement",
+            "text": "community engagement",
+            "contribution": 0.36
+          },
+          {
+            "signal": "downstream",
+            "text": "downstream integration affected",
+            "contribution": 0.35
+          },
+          {
+            "signal": "spec",
+            "text": "protocol conformance",
+            "contribution": 0.28
+          }
+        ],
+        "maintainer_replied": false,
+        "assigned": false,
+        "linked_prs": [
+          5972,
+          5983
+        ]
+      },
       {
         "number": 5574,
         "title": "ResponseCachingMiddleware serves one session's cached tools/call result to another session",
@@ -807,100 +906,6 @@
         "assigned": false,
         "linked_prs": [
           5576
-        ]
-      },
-      {
-        "number": 5971,
-        "title": "Proxy sends both the forwarded and the configured header when their names differ in case",
-        "url": "https://github.com/PrefectHQ/fastmcp/issues/5971",
-        "updated_at": "2026-10-22T15:37:17+00:00",
-        "score": 17.99,
-        "kind": "bug",
-        "judged": true,
-        "assessment": {
-          "kind": {
-            "bug": 1.0,
-            "regression": 0.0,
-            "feature": 0.0,
-            "question": 0.0,
-            "docs": 0.0,
-            "other": 0.0
-          },
-          "repro": 0.98,
-          "actionable": 1.0,
-          "severity": 0.9900000000000001,
-          "security": 0.95,
-          "spec": 0.28,
-          "downstream": 0.23
-        },
-        "input_digest": "1a6fb0f719ae9e30e518dcdd061b25772215e130180a8d33834056976e93902b",
-        "reasons": [
-          {
-            "signal": "security",
-            "text": "security-sensitive report",
-            "contribution": 3.8
-          },
-          {
-            "signal": "priority",
-            "text": "priority label",
-            "contribution": 3.0
-          },
-          {
-            "signal": "severity",
-            "text": "potential impact",
-            "contribution": 2.97
-          },
-          {
-            "signal": "security_label",
-            "text": "security label",
-            "contribution": 2.5
-          },
-          {
-            "signal": "regression",
-            "text": "possible regression",
-            "contribution": 2.35
-          },
-          {
-            "signal": "handled",
-            "text": "assigned or linked to a fix",
-            "contribution": -1.5
-          },
-          {
-            "signal": "repro",
-            "text": "reproduction provided",
-            "contribution": 1.47
-          },
-          {
-            "signal": "release_proximity",
-            "text": "reported near a relevant release",
-            "contribution": 1.41
-          },
-          {
-            "signal": "actionable",
-            "text": "actionable report",
-            "contribution": 1.0
-          },
-          {
-            "signal": "engagement",
-            "text": "community engagement",
-            "contribution": 0.36
-          },
-          {
-            "signal": "downstream",
-            "text": "downstream integration affected",
-            "contribution": 0.35
-          },
-          {
-            "signal": "spec",
-            "text": "protocol conformance",
-            "contribution": 0.28
-          }
-        ],
-        "maintainer_replied": false,
-        "assigned": false,
-        "linked_prs": [
-          5972,
-          5983
         ]
       },
       {
@@ -1095,7 +1100,7 @@
         "title": "`authlib` dependency has 2 unpatched critical CVEs with no fix planned",
         "url": "https://github.com/PrefectHQ/fastmcp/issues/5531",
         "updated_at": "2026-10-13T22:13:23+00:00",
-        "score": 14.49,
+        "score": 14.53,
         "kind": "bug",
         "judged": true,
         "assessment": {
@@ -1154,7 +1159,7 @@
           {
             "signal": "engagement",
             "text": "community engagement",
-            "contribution": 0.68
+            "contribution": 0.72
           },
           {
             "signal": "regression",
