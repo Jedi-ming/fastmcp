@@ -102,7 +102,7 @@ case "${1:-}" in
          actions:[{type:"run-deployment",source:"selected",deployment_id:$deployment,job_variables:null,
            parameters:{controller_id:$controller,runtime:$runtime[0],
              config:({queue:"events",max_items:3} + {(if $issue then "issues" else "pull_requests" end):
-               [{"__prefect_kind":"jinja",template:"{{ event.resource[\"github.number\"] }}"}]})}}],
+               {"__prefect_kind":"json",value:{"__prefect_kind":"jinja",template:"[{{ event.resource[\"github.number\"]|int }}]"}}})}}],
          actions_on_trigger:[],actions_on_resolve:[]}' > "$scratch/automation-$kind.json"
       echo "automation $kind $(upsert automations "$scratch/automation-$kind.json")"
     done
