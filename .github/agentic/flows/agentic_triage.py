@@ -113,11 +113,14 @@ def admit(
     pending = state["pending"]
     coverage = {"scope": "retained queue", "metadata_rows": 0, "deferred": 0}
     page = state["next_page"]
-    if not pending:
+    if not pending or config.scoped():
         scanned = inventory(read, config, page)
         page = scanned["next_page"]
         coverage = {**scanned["coverage"], "deferred": 0}
+        queued = {item["issue_number"] for item in pending}
         for item in scanned["pending"]:
+            if item["issue_number"] in queued:
+                continue
             receipt = latest(f"{scope}-issue-{item['issue_number']}")
             if due(receipt, item, config, now, runtime.source_sha):
                 pending.append(item)

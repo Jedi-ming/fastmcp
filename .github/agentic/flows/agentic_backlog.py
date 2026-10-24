@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable
 from datetime import datetime, timedelta
 
@@ -14,19 +15,39 @@ class Intake(BaseModel):
     max_items: int = Field(default=3, ge=1, le=3)
     refresh_minutes: int = Field(default=60, ge=1, le=1440)
     issues: list[PositiveInt] = Field(default_factory=list, max_length=30)
+    pull_requests: list[PositiveInt] = Field(default_factory=list, max_length=10)
+    queue: str | None = Field(default=None, pattern=r"^[a-z0-9-]{1,32}$")
     retry_failed: bool = False
 
+    def scoped(self) -> bool:
+        return bool(self.issues or self.pull_requests)
+
     def scope(self) -> str:
+        if self.queue:
+            return "fastmcp-intake-" + self.queue
         return "fastmcp-intake-" + digest([self.branch, sorted(set(self.issues))])[:24]
+
+
+REFERENCE = re.compile(
+    r"(?:(?<![\w/])#|github\.com/PrefectHQ/fastmcp/issues/)([1-9][0-9]*)\b"
+)
+
+
+def referenced_issues(body: str) -> list[int]:
+    return sorted({int(number) for number in REFERENCE.findall(body)})[:5]
 
 
 def inventory(read: Callable[[str], object], config: Intake, page: int) -> dict:
     root = "repos/PrefectHQ/fastmcp"
-    if config.issues:
-        rows = [
-            read(f"{root}/issues/{number}") for number in sorted(set(config.issues))
-        ]
-        pages = {"scoped": len(rows)}
+    if config.scoped():
+        numbers = set(config.issues)
+        for number in sorted(set(config.pull_requests)):
+            pull = read(f"{root}/pulls/{number}")
+            if not isinstance(pull, dict):
+                raise ValueError("Invalid pull request metadata")
+            numbers.update(referenced_issues(pull.get("body") or ""))
+        rows = [read(f"{root}/issues/{number}") for number in sorted(numbers)]
+        pages = {"scoped": len(rows), "pull_requests": len(set(config.pull_requests))}
         next_page = 1
     else:
         backlog = read(
@@ -70,7 +91,9 @@ def inventory(read: Callable[[str], object], config: Intake, page: int) -> dict:
             **pages,
             "metadata_rows": len(rows),
             "unique_open_issues": len(issues),
-            "scope": "explicit issues" if config.issues else "rolling open-issue pages",
+            "scope": "explicit issues"
+            if config.scoped()
+            else "rolling open-issue pages",
             "limitation": "Rolling pages are not a snapshot census. Concurrent changes can shift pages; later sweeps revisit them. PR activity is checked during full intake, not inferred from issue timestamps.",
         },
     }

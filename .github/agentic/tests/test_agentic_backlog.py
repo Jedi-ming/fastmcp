@@ -10,14 +10,14 @@ from prefect import flow
 from prefect.client.orchestration import get_client
 from prefect.client.schemas.actions import WorkPoolCreate
 from prefect.client.schemas.filters import FlowRunFilter
-from prefect.states import Failed, Running
+from prefect.states import Completed, Failed, Running
 from prefect.testing.utilities import prefect_test_harness
 
 from flows.agentic_backlog import Intake, due, inventory, settle
 from flows.agentic_freshness import revalidate
 from flows.agentic_intake import evidence_revision
 from flows.agentic_stack_runtime import AgentPlan, Runtime, gh_api, record
-from flows.agentic_triage import admit, checkpoint, dispatch, finish, latest
+from flows.agentic_triage import admit, checkpoint, dispatch, finish, latest, retain
 
 
 def issue(number, **extra):
@@ -81,6 +81,24 @@ def test_bounded_inventory_retains_backlog_priority_and_reports_partial_coverage
     assert result["coverage"]["metadata_rows"] == 32
     assert result["coverage"]["unique_open_issues"] == 30
     assert "not a snapshot census" in result["coverage"]["limitation"]
+
+
+def test_event_intake_resolves_pull_requests_to_referenced_open_issues(github_server):
+    read, responses, requests = github_server
+    responses["/repos/PrefectHQ/fastmcp/pulls/7"] = {
+        "number": 7,
+        "body": "Fixes #5 and https://github.com/PrefectHQ/fastmcp/issues/6; not other/repo#8",
+    }
+    responses["/repos/PrefectHQ/fastmcp/issues/5"] = issue(5)
+    responses["/repos/PrefectHQ/fastmcp/issues/6"] = issue(6, state="closed")
+    responses["/repos/PrefectHQ/fastmcp/issues/9"] = issue(9)
+    config = Intake(issues=[9], pull_requests=[7], queue="events")
+    result = inventory(read, config, 1)
+    assert [row["issue_number"] for row in result["pending"]] == [5, 9]
+    assert result["coverage"]["pull_requests"] == 1
+    assert "/repos/PrefectHQ/fastmcp/issues/8" not in requests
+    assert config.scope() == Intake(issues=[1], queue="events").scope()
+    assert Intake(issues=[9]).scope() != config.scope()
 
 
 def test_receipts_defer_but_do_not_certify_unchanged_contribution_history():
@@ -315,6 +333,41 @@ def test_queue_recovers_same_controller_and_commits_only_saved_outcomes(
         )
         assert len(requests) == before
         assert checkpoint(config.scope()) == (replacement, state)
+
+
+def test_event_queue_adds_new_issues_to_retained_pending(github_server):
+    read, responses, _ = github_server
+    for number in (1, 2):
+        responses[f"/repos/PrefectHQ/fastmcp/issues/{number}"] = issue(number)
+    responses["/repos/PrefectHQ/fastmcp/commits/main"] = {"sha": "a" * 40}
+    config = Intake(issues=[2], queue="events")
+    with prefect_test_harness(), get_client(sync_client=True) as client:
+        client.create_work_pool(WorkPoolCreate(name="managed", type="process"))
+        flow_id = client.create_flow(controller_stub)
+        deployment = client.create_deployment(
+            flow_id, "cloud-stack-batch", version="b" * 40, work_pool_name="managed"
+        )
+        runtime = Runtime(
+            plans={
+                role: AgentPlan(flow_id=uuid4(), version_id=uuid4())
+                for role in ("assess", "reproduce", "prepare", "review")
+            },
+            validator_id=uuid4(),
+            source_sha="b" * 40,
+        )
+        previous = client.create_flow_run(controller_stub, state=Completed()).id
+        retained = inventory(read, Intake(issues=[1]), 1)["pending"]
+        retain(
+            previous,
+            config.scope() + "-committed",
+            {"phase": "committed", "pending": retained, "next_page": 1},
+        )
+        owner = client.create_flow_run(controller_stub, state=Running()).id
+        plan = admit(config, runtime, deployment, owner, read)
+        assert [row["issue_number"] for row in plan["pending"]] == [1, 2]
+        assert [
+            item["issue_number"] for item in plan["batch"]["groups"][0]["items"]
+        ] == [1, 2]
 
 
 def test_gh_api_failure_reports_stderr(tmp_path):
