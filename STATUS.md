@@ -1,6 +1,6 @@
 # FastMCP maintenance status
 
-As of 2026-10-25T13:10:25Z. Generated twice a day by [maintenance-status](https://github.com/PrefectHQ/fastmcp/actions/workflows/maintenance-status.yml); machine-readable as [status.json](status.json). How the project is run: [Development guide](https://github.com/PrefectHQ/fastmcp/blob/main/docs/development/contributing.mdx#maintenance-and-automation).
+As of 2026-10-25T21:10:23Z. Generated twice a day by [maintenance-status](https://github.com/PrefectHQ/fastmcp/actions/workflows/maintenance-status.yml); machine-readable as [status.json](status.json). How the project is run: [Development guide](https://github.com/PrefectHQ/fastmcp/blob/main/docs/development/contributing.mdx#maintenance-and-automation).
 
 | automation | state | last ok | runs on | cadence |
 |---|---|---|---|---|
@@ -16,7 +16,7 @@ As of 2026-10-25T13:10:25Z. Generated twice a day by [maintenance-status](https:
 | [docs deploy](https://github.com/PrefectHQ/fastmcp/actions/workflows/deploy-docs.yml) | ok | 2026-10-21 | github-actions | on each docs publication |
 | [contributor queue](https://github.com/PrefectHQ/fastmcp/pulls?q=is%3Apr+is%3Aopen+label%3Amissing-issue-link) | ok | 2026-10-25 | github-actions | twice daily |
 
-**Contributor queue:** 103 PRs waiting on assignment; the oldest has waited 42 days, and 41 have waited more than a week.
+**Contributor queue:** 110 PRs waiting on assignment; the oldest has waited 42 days, and 45 have waited more than a week.
 
 **Needs a maintainer's judgment:**
 
