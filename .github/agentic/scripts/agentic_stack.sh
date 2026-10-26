@@ -7,6 +7,14 @@ cd "$(dirname "$0")/.."
 }
 unset PREFECT_API_AUTH_STRING
 api() { uv run --locked prefect --no-prompt api "$@" </dev/null; }
+upsert() {
+  local kind=$1 body=$2 name id
+  name=$(jq -r .name "$body")
+  jq -n '{limit:200}' > "$body.filter"
+  id=$(api POST "/$kind/filter" --data "@$body.filter" | jq -r --arg name "$name" 'map(select(.name==$name)) | if length>1 then error("duplicate \($name)") else (.[0].id // "") end')
+  if [[ -n $id ]]; then api PUT "/$kind/$id" --data "@$body" >/dev/null; echo "$id"
+  else api POST "/$kind/" --data "@$body" | jq -er .id; fi
+}
 
 case "${1:-}" in
   validate)
@@ -77,13 +85,6 @@ case "${1:-}" in
     [[ -z $notify || $notify =~ ^[0-9a-f-]{36}$ ]] || exit 2
     scratch=$(mktemp -d)
     trap 'rm -rf "$scratch"' EXIT
-    upsert() {
-      local kind=$1 body=$2 id
-      jq -n --arg name "$(jq -r .name "$body")" '{limit:200}' > "$scratch/filter.json"
-      id=$(api POST "/$kind/filter" --data "@$scratch/filter.json" | jq -r --arg name "$(jq -r .name "$body")" 'map(select(.name==$name)) | if length>1 then error("duplicate \($name)") else (.[0].id // "") end')
-      if [[ -n $id ]]; then api PUT "/$kind/$id" --data "@$body" >/dev/null; echo "$id"
-      else api POST "/$kind/" --data "@$body" | jq -er .id; fi
-    }
     jq -n --rawfile template workflows/events/github-webhook-template.json.j2 \
       '{name:"fastmcp-triage-github",description:"PrefectHQ/fastmcp issue and pull request events for agentic triage",enabled:true,template:$template}' > "$scratch/webhook.json"
     webhook=$(upsert webhooks "$scratch/webhook.json")
@@ -120,8 +121,36 @@ case "${1:-}" in
       echo "automation notify $(upsert automations "$scratch/automation-notify.json")"
     fi
     ;;
+  alerts)
+    runtime=${2:?pinned runtime JSON file required}
+    notify=${3:?notification block document UUID required}
+    [[ $notify =~ ^[0-9a-f-]{36}$ ]] || exit 2
+    scratch=$(mktemp -d)
+    trap 'rm -rf "$scratch"' EXIT
+    jq -n '{deployments:{name:{any_:["cloud-triage-intake","cloud-triage-verify","cloud-triage-finalize","cloud-stack-batch","cloud-stack-validation","cloud-contribution-verification"]}},limit:20}' > "$scratch/filter.json"
+    api POST /deployments/filter --data "@$scratch/filter.json" > "$scratch/deployments.json"
+    jq -e 'length == 6' "$scratch/deployments.json" >/dev/null || {
+      echo 'Expected all six managed deployments' >&2; exit 1;
+    }
+    jq -n --slurpfile deployments "$scratch/deployments.json" --slurpfile runtime "$runtime" --arg notify "$notify" '
+      ([$deployments[0][].id | "prefect.deployment." + .]
+       + [($runtime[0].plans[], $runtime[0].triage_plan // empty).flow_id | "prefect.flow." + .]) as $scope |
+      {name:"fastmcp-triage-failure-alert",
+       description:"Notify on every failed, crashed, timed-out or degraded agentic triage run",
+       enabled:true,
+       trigger:{type:"event",posture:"Reactive",threshold:1,within:0,
+         expect:["prefect.flow-run.Failed","prefect.flow-run.Crashed","prefect.flow-run.TimedOut","prefect.flow-run.Degraded"],
+         match:{"prefect.resource.id":"prefect.flow-run.*"},
+         match_related:{"prefect.resource.id":$scope},
+         after:[],for_each:["prefect.resource.id"]},
+       actions:[{type:"send-notification",block_document_id:$notify,
+         subject:"fastmcp triage {{ flow_run.state.name }}: {{ flow.name }}/{{ flow_run.name }}",
+         body:"{{ flow.name }}{% if deployment %} ({{ deployment.name }}){% endif %} run {{ flow_run.name }} entered {{ flow_run.state.name }}.\n\n{{ flow_run.state.message or \"No state message.\" }}\n\n{{ flow_run|ui_url }}"}],
+       actions_on_trigger:[],actions_on_resolve:[]}' > "$scratch/automation-alert.json"
+    echo "automation alert $(upsert automations "$scratch/automation-alert.json")"
+    ;;
   *)
-    echo 'Usage: agentic_stack.sh validate | register | intake CONFIG RUNTIME CONTROLLER DEPLOYMENT OPERATION | run BATCH RUNTIME DEPLOYMENT | results RUN | events RUNTIME CONTROLLER DEPLOYMENT [NOTIFY_BLOCK]' >&2
+    echo 'Usage: agentic_stack.sh validate | register | intake CONFIG RUNTIME CONTROLLER DEPLOYMENT OPERATION | run BATCH RUNTIME DEPLOYMENT | results RUN | events RUNTIME CONTROLLER DEPLOYMENT [NOTIFY_BLOCK] | alerts RUNTIME NOTIFY_BLOCK' >&2
     exit 2
     ;;
 esac
