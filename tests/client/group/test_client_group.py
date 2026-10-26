@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from typing import Any
 from unittest.mock import patch
@@ -217,7 +217,7 @@ async def test_group_keeps_one_connection_per_server():
     lifecycles = {"entered": 0, "exited": 0}
 
     @asynccontextmanager
-    async def lifespan(_server: FastMCP) -> AsyncIterator[dict[str, Any]]:
+    async def lifespan(_server: FastMCP) -> AsyncGenerator[dict[str, Any], None]:
         lifecycles["entered"] += 1
         try:
             yield {}
@@ -416,6 +416,41 @@ async def test_group_reconnects_after_last_exit():
         result = await group.call_tool("server_echo", {"value": "again"})
         assert result.data == "server: again"
     assert not client.is_connected()
+
+
+@pytest.mark.parametrize("mode", ["auto", "legacy"])
+async def test_stale_group_context_does_not_disconnect_reconnected_session(
+    fastmcp_server, mode
+):
+    client = Client(fastmcp_server, mode=mode)
+    group = ClientGroup({"server": client})
+    entered = asyncio.Event()
+    release = asyncio.Event()
+    exited = asyncio.Event()
+
+    async def old_group_context() -> None:
+        async with group:
+            entered.set()
+            await release.wait()
+        exited.set()
+
+    old_task = asyncio.create_task(old_group_context())
+    await entered.wait()
+    await client.close()
+
+    try:
+        async with client:
+            first = await client.call_tool("greet", {"name": "World"})
+            assert first.data == "Hello, World!"
+
+            release.set()
+            await exited.wait()
+
+            second = await client.call_tool("greet", {"name": "World"})
+            assert second.data == "Hello, World!"
+    finally:
+        release.set()
+        await old_task
 
 
 async def test_failed_entry_leaves_group_reenterable():
