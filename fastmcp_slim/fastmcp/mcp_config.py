@@ -259,6 +259,12 @@ class RemoteMCPServer(BaseModel):
     sse_read_timeout: datetime.timedelta | int | float | None = None
     timeout: int | None = None  # Maximum response time in milliseconds
 
+    # Streamable HTTP configuration
+    max_sse_event_size: int | None = 1024 * 1024
+    """Maximum size in bytes of an incoming SSE event on the streamable HTTP
+    transport. Defaults to 1 MiB. None disables the limit. Ignored for SSE
+    transport."""
+
     # Metadata
     description: str | None = None  # Human-readable server description
     icon: str | None = None  # Icon path or URL for UI display
@@ -296,6 +302,7 @@ class RemoteMCPServer(BaseModel):
                 self.url,
                 headers=self.headers,
                 auth=self.auth,
+                max_sse_event_size=self.max_sse_event_size,
             )
 
 
@@ -389,8 +396,12 @@ def update_config_file(
     """Update an MCP configuration file from a server object, preserving existing fields.
 
     This is used for updating the mcpServer configurations of third-party tools so we do not
-    worry about transforming server objects here."""
-    config = MCPConfig.from_file(file_path)
+    worry about transforming server objects here. A missing or empty file is treated as a
+    config with no servers, so it is created on write."""
+    if file_path.exists() and file_path.read_text(encoding="utf-8").strip():
+        config = MCPConfig.from_file(file_path)
+    else:
+        config = MCPConfig()
 
     # If updating an existing server, merge with existing configuration
     # to preserve any unknown fields
