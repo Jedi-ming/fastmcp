@@ -23,7 +23,7 @@ from prefect.states import Completed
 
 from flows.agentic_backlog import Intake, due, inventory, settle
 from flows.agentic_freshness import revalidate
-from flows.agentic_intake import evidence_revision
+from flows.agentic_intake import evidence_revision, upgrade_policy_outcomes
 from flows.agentic_review_queue import plain, retain_markdown, retain_review_queue
 from flows.agentic_stack_policy import Batch
 from flows.agentic_stack_runtime import (
@@ -117,15 +117,23 @@ def admit(
         scanned = inventory(read, config, page)
         page = scanned["next_page"]
         coverage = {**scanned["coverage"], "deferred": 0}
-        queued = {item["issue_number"] for item in pending}
+        queued = {item["issue_number"]: item for item in pending}
+        admitted = []
         for item in scanned["pending"]:
-            if item["issue_number"] in queued:
+            number = item["issue_number"]
+            if number in queued:
+                if config.scoped():
+                    admitted.append(queued[number])
                 continue
-            receipt = latest(f"{scope}-issue-{item['issue_number']}")
+            receipt = latest(f"{scope}-issue-{number}")
             if due(receipt, item, config, now, runtime.source_sha):
-                pending.append(item)
+                admitted.append(item)
             else:
                 coverage["deferred"] += 1
+        targets = {item["issue_number"] for item in admitted}
+        pending = admitted + [
+            item for item in pending if item["issue_number"] not in targets
+        ]
     selected = pending[: config.max_items]
     batch = None
     if selected:
@@ -249,8 +257,10 @@ def finish(
                         "batch_id": plan["batch"]["id"],
                         "usage": {"status": "unavailable"},
                     }
-            if result is not None and result.get("batch_id") != plan["batch"]["id"]:
-                raise ValueError("Review bins describe a different admission")
+            if result is not None:
+                if result.get("batch_id") != plan["batch"]["id"]:
+                    raise ValueError("Review bins describe a different admission")
+                result = upgrade_policy_outcomes(result)
         selected = [
             item["issue_number"] for item in plan["batch"]["groups"][0]["items"]
         ]

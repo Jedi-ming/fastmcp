@@ -242,3 +242,24 @@ def route_intake(evidence: dict) -> dict:
         "triage",
         "No direct contribution match; establish impact, intended contract and supported versions",
     )
+
+
+def policy_outcome(issue_number: int | None, route: dict) -> dict:
+    return {"issue_number": issue_number, "reason": route["reason"], "route": route}
+
+
+def upgrade_policy_outcomes(result: dict) -> dict:
+    # Controllers before policy_outcome binned the bare decision, whose
+    # "route" is the route name rather than the decision.
+    return {
+        **result,
+        "bins": {
+            name: [
+                policy_outcome(item.get("issue_number"), item)
+                if isinstance(item.get("route"), str)
+                else item
+                for item in items
+            ]
+            for name, items in result["bins"].items()
+        },
+    }

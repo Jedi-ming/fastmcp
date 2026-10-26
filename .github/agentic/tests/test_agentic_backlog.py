@@ -15,7 +15,7 @@ from prefect.testing.utilities import prefect_test_harness
 
 from flows.agentic_backlog import Intake, due, inventory, settle
 from flows.agentic_freshness import revalidate
-from flows.agentic_intake import evidence_revision
+from flows.agentic_intake import evidence_revision, policy_outcome, route_intake
 from flows.agentic_stack_runtime import AgentPlan, Runtime, gh_api, record
 from flows.agentic_triage import admit, checkpoint, dispatch, finish, latest, retain
 
@@ -364,10 +364,47 @@ def test_event_queue_adds_new_issues_to_retained_pending(github_server):
         )
         owner = client.create_flow_run(controller_stub, state=Running()).id
         plan = admit(config, runtime, deployment, owner, read)
-        assert [row["issue_number"] for row in plan["pending"]] == [1, 2]
+        assert [row["issue_number"] for row in plan["pending"]] == [2, 1]
         assert [
             item["issue_number"] for item in plan["batch"]["groups"][0]["items"]
-        ] == [1, 2]
+        ] == [2, 1]
+
+
+def test_event_target_is_admitted_ahead_of_a_full_retained_queue(github_server):
+    read, responses, _ = github_server
+    for number in (1, 2, 3, 4):
+        responses[f"/repos/PrefectHQ/fastmcp/issues/{number}"] = issue(number)
+    responses["/repos/PrefectHQ/fastmcp/pulls/9"] = {"body": "Fixes #3"}
+    responses["/repos/PrefectHQ/fastmcp/commits/main"] = {"sha": "a" * 40}
+    with prefect_test_harness(), get_client(sync_client=True) as client:
+        client.create_work_pool(WorkPoolCreate(name="managed", type="process"))
+        flow_id = client.create_flow(controller_stub)
+        deployment = client.create_deployment(
+            flow_id, "cloud-stack-batch", version="b" * 40, work_pool_name="managed"
+        )
+        runtime = Runtime(
+            plans={
+                role: AgentPlan(flow_id=uuid4(), version_id=uuid4())
+                for role in ("assess", "reproduce", "prepare", "review")
+            },
+            validator_id=uuid4(),
+            source_sha="b" * 40,
+        )
+        scope = Intake(queue="events").scope()
+        previous = client.create_flow_run(controller_stub, state=Completed()).id
+        retained = inventory(read, Intake(issues=[1, 2, 3, 4]), 1)["pending"]
+        retain(
+            previous,
+            scope + "-committed",
+            {"phase": "committed", "pending": retained, "next_page": 1},
+        )
+        owner = client.create_flow_run(controller_stub, state=Running()).id
+        config = Intake(pull_requests=[9], queue="events", max_items=1)
+        plan = admit(config, runtime, deployment, owner, read)
+        assert [row["issue_number"] for row in plan["pending"]] == [3, 1, 2, 4]
+        assert [
+            item["issue_number"] for item in plan["batch"]["groups"][0]["items"]
+        ] == [3]
 
 
 def test_gh_api_failure_reports_stderr(tmp_path):
@@ -377,3 +414,53 @@ def test_gh_api_failure_reports_stderr(tmp_path):
 
     with pytest.raises(RuntimeError, match=r"issues/2026 exited 1: .*Bad credentials"):
         gh_api("repos/PrefectHQ/fastmcp/issues/2026", {"PATH": str(tmp_path)}, 5)
+
+
+def test_finish_commits_policy_decisions_saved_by_an_older_controller(
+    github_server, evidence
+):
+    read, responses, _ = github_server
+    responses["/repos/PrefectHQ/fastmcp/issues/1"] = issue(1)
+    responses["/repos/PrefectHQ/fastmcp/commits/main"] = {"sha": "a" * 40}
+    config = Intake(issues=[1], queue="events")
+    with prefect_test_harness(), get_client(sync_client=True) as client:
+        client.create_work_pool(WorkPoolCreate(name="managed", type="process"))
+        flow_id = client.create_flow(controller_stub)
+        deployment = client.create_deployment(
+            flow_id, "cloud-stack-batch", version="b" * 40, work_pool_name="managed"
+        )
+        runtime = Runtime(
+            plans={
+                role: AgentPlan(flow_id=uuid4(), version_id=uuid4())
+                for role in ("assess", "reproduce", "prepare", "review")
+            },
+            validator_id=uuid4(),
+            source_sha="b" * 40,
+        )
+        owner = client.create_flow_run(controller_stub, state=Running()).id
+        plan = admit(config, runtime, deployment, owner, read)
+        child = dispatch.fn(plan)
+        original = {
+            **evidence,
+            "stacks": [],
+            "issue": {**evidence["issue"], "number": 1, "labels": ["security"]},
+        }
+        legacy = route_intake(original)
+        record.fn(
+            child, f"{plan['batch']['id']}-issue-1-intake", {"evidence": original}
+        )
+        record.fn(
+            child,
+            f"{plan['batch']['id']}-review-bins",
+            {
+                "batch_id": plan["batch"]["id"],
+                "bins": {"decisions": [legacy], "operational": []},
+            },
+        )
+        client.set_flow_run_state(child, Completed(), force=True)
+        state = finish(
+            plan, owner, config.scope(), child, read_evidence=lambda *_: original
+        )
+        assert state["completed"] == [1]
+        assert state["review"]["bins"]["decisions"] == [policy_outcome(1, legacy)]
+        assert checkpoint(config.scope()) == (owner, state)

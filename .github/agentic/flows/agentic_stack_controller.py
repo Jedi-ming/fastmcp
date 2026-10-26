@@ -18,7 +18,7 @@ from prefect.states import Completed
 
 from flows.agentic_baseline import review_existing
 from flows.agentic_freshness import revalidate
-from flows.agentic_intake import route_intake
+from flows.agentic_intake import policy_outcome, route_intake
 from flows.agentic_native_triage import run_native_triage
 from flows.agentic_review_queue import retain_review_queue
 from flows.agentic_stack import StackLayer, StackSpec, digest, read_stack_artifact
@@ -368,7 +368,7 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                         "evidence_needed": "evidence",
                         "retry": "operational",
                     }.get(route["route"], "decisions")
-                    bins[destination].append(route)
+                    bins[destination].append(policy_outcome(number, route))
                     continue
                 bundle = (
                     item_bundles["existing_instructions"]

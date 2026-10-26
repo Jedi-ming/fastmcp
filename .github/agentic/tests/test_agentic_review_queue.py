@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from flows.agentic_backlog import settle
+from flows.agentic_intake import policy_outcome, route_intake, upgrade_policy_outcomes
 from flows.agentic_review_queue import plain, review_markdown
 
 
@@ -81,3 +83,21 @@ def test_reproduction_queue_preserves_probe_and_contains_fence_like_output():
     assert f"````text\n{observed}\n````" in markdown
     assert f"```diff\n{probe}\n```" in markdown
     assert "a" * 40 in markdown
+
+
+def test_policy_decisions_render_and_legacy_bins_upgrade(evidence):
+    evidence["issue"]["labels"] = ["security"]
+    route = route_intake(evidence)
+    number = evidence["issue"]["number"]
+    current = {
+        "batch_id": "events",
+        "bins": {"decisions": [policy_outcome(number, route)], "operational": []},
+    }
+    legacy = {"batch_id": "events", "bins": {"decisions": [route], "operational": []}}
+    assert upgrade_policy_outcomes(legacy) == current
+    assert upgrade_policy_outcomes(current) == current
+    markdown = review_markdown(upgrade_policy_outcomes(legacy))
+    assert f"Issue #{number}" in markdown
+    assert "Security\\-labeled report requires restricted review" in markdown
+    _, completed = settle([{"issue_number": number, "attempts": 0}], [number], current)
+    assert completed == [number]
