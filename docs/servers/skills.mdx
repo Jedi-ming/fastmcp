@@ -30,32 +30,70 @@ That's a skills server. Every client can read `skill://release-notes/SKILL.md` a
 
 ## Where skills come from
 
-A `Skill` is just files. Write it in Python as above, or load what you already have:
+A `Skill` is a value: a name, a description, instructions, and the files they refer to. It doesn't know where it came from or which URI it is served under. Build one in Python as above, or load what you already have on disk or in a package:
 
 ```python
 from fastmcp import Skill
 
 deploy = Skill.from_directory("skills/deploy")
 review = Skill.from_package("my_package", "skills/review")
-triage = Skill.from_files({"SKILL.md": "---\nname: triage\ndescription: Triage issues.\n---\n"})
 ```
+
+`Skill.from_files()` takes a mapping of relative paths to contents when the files are already in memory.
 
 Skills are validated when you build them and never change afterward; editing the folder later doesn't touch the loaded skill. The `description` is what an agent reads to decide whether to use the skill, so make it say when.
 
-If your skills live somewhere that changes, like a database, override `load_skills()`. FastMCP calls it once per request:
+`SkillCatalogProvider` serves the skills you hand it. When the set of skills changes at runtime, override `load_skills()` instead and build the skills from wherever they live. FastMCP calls it once per request. Rows in a database are a fine source: the columns become the skill's fields, and no file is involved.
 
 ```python
 from fastmcp import Skill
 from fastmcp.skills.provider import SkillCatalogProvider
 
+rows = [
+    {
+        "name": "triage",
+        "description": "Triage new issues.",
+        "body": "# Triage\n\nLabel the issue, then assign it.\n",
+    }
+]
+
 
 class StoredSkills(SkillCatalogProvider):
     async def load_skills(self) -> list[Skill]:
-        rows = [{"SKILL.md": "---\nname: triage\ndescription: Triage issues.\n---\n"}]
-        return [Skill.from_files(files) for files in rows]
+        return [
+            Skill(
+                name=row["name"],
+                description=row["description"],
+                instructions=row["body"],
+            )
+            for row in rows
+        ]
 ```
 
-If you're still editing a folder and want changes to show up live, serve it straight from disk with `SkillsDirectoryProvider(path, experimental_skills=True)`. Presets like `ClaudeSkillsProvider` do the same for a coding agent's own skills folder.
+A folder you're still editing is the same shape. Re-read it on every request and changes show up live:
+
+```python
+from pathlib import Path
+
+from fastmcp import Skill
+from fastmcp.skills.provider import SkillCatalogProvider
+
+
+class FolderSkills(SkillCatalogProvider):
+    def __init__(self, root: Path) -> None:
+        super().__init__()
+        self.root = root
+
+    async def load_skills(self) -> list[Skill]:
+        folders = sorted(self.root.iterdir())
+        return [
+            Skill.from_directory(folder)
+            for folder in folders
+            if (folder / "SKILL.md").is_file()
+        ]
+```
+
+`SkillsDirectoryProvider(path, experimental_skills=True)` is a built-in version of this, and presets like `ClaudeSkillsProvider` point it at a coding agent's own skills folder.
 
 ## Access control
 
@@ -66,20 +104,6 @@ Discovery never shows a skill the caller can't read. If any of its files is hidd
 Skills come along when you [mount](/servers/composition) a server, at the URIs the parent serves them at: `mount(child, namespace="team")` turns `skill://review/` into `skill://team/review/`. If you'd rather choose exactly which providers are discoverable, register the extension yourself with `mcp.add_extension(SkillsExtension(providers=[...]))` from `fastmcp.skills.extension`.
 
 ## Read skills from a client
-
-### Install skills into a local agent
-
-Most agents still only read skills from disk. `sync_skills()` copies a server's skills into a local folder, and works with any server that serves skills as resources:
-
-```python
-from pathlib import Path
-
-from fastmcp import Client
-from fastmcp.utilities.skills import sync_skills
-
-async with Client("http://localhost:8000/mcp") as client:
-    await sync_skills(client, Path.home() / ".claude" / "skills", overwrite=True)
-```
 
 ### Discover skills with the Skills extension
 
@@ -96,6 +120,20 @@ async with client:
 ```
 
 You get metadata, not content. Read the files you need with `read_resource()`, and check each against its manifest `digest` before trusting it. [`ClientGroup.list_skills()`](/clients/client-groups) does the same across several servers.
+
+### Install skills into a local agent
+
+Most agents still only read skills from disk. `sync_skills()` copies a server's skills into a local folder, and works with any server that serves skills as resources:
+
+```python
+from pathlib import Path
+
+from fastmcp import Client
+from fastmcp.utilities.skills import sync_skills
+
+async with Client("http://localhost:8000/mcp") as client:
+    await sync_skills(client, Path.home() / ".claude" / "skills", overwrite=True)
+```
 
 ## Current limits
 
