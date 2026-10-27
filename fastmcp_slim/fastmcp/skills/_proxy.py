@@ -27,9 +27,6 @@ from fastmcp.skills.models import (
     GetSkillParams,
     GetSkillRequest,
     GetSkillResult,
-    ListSkillsParams,
-    ListSkillsRequest,
-    ListSkillsResult,
     MCPSkill,
 )
 
@@ -71,13 +68,13 @@ class _ProxiedSkills:
             return None
         return entry
 
-    async def _listed(self) -> list[MCPSkill]:
+    async def _listed(self) -> Sequence[MCPSkill]:
         # skills/list asks for identities and entries separately; one backend
         # call per request answers both.
         state = get_context()._request_state
         key = f"_fastmcp_proxied_skills:{id(self._provider)}"
         if key not in state:
-            state[key] = await self._list_backend()
+            state[key] = await self._provider._list_skills()
         return state[key]
 
     async def _fetched(self, uri: str) -> MCPSkill | None:
@@ -95,30 +92,6 @@ class _ProxiedSkills:
                 yield client
         except _PROXY_TRANSPORT_ERRORS as error:
             raise _proxy_upstream_error(error) from error
-
-    async def _list_backend(self) -> list[MCPSkill]:
-        meta = _session_request_meta(_forwardable_request_meta(get_context()))
-        entries: list[MCPSkill] = []
-        cursor: str | None = None
-        seen: set[str] = set()
-        async with self._client() as client:
-            while True:
-                request = ListSkillsRequest(
-                    params=ListSkillsParams(cursor=cursor, meta=meta)
-                )
-                try:
-                    page = await client._await_with_session_monitoring(
-                        client.session.send_request(request, ListSkillsResult)
-                    )
-                except MCPError as error:
-                    if error.error.code == METHOD_NOT_FOUND:
-                        return []
-                    raise
-                entries.extend(page.skills)
-                if not page.next_cursor or page.next_cursor in seen:
-                    return entries
-                seen.add(page.next_cursor)
-                cursor = page.next_cursor
 
     async def _get_backend(self, uri: str) -> MCPSkill | None:
         meta = _session_request_meta(_forwardable_request_meta(get_context()))

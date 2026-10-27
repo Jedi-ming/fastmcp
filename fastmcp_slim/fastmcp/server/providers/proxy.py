@@ -62,6 +62,12 @@ from fastmcp.server.providers.addressing import is_app_tool_with_identity
 from fastmcp.server.providers.aggregate import ProviderErrorStrategy
 from fastmcp.server.providers.base import Provider
 from fastmcp.server.server import FastMCP
+from fastmcp.skills.models import (
+    ListSkillsParams,
+    ListSkillsRequest,
+    ListSkillsResult,
+    MCPSkill,
+)
 from fastmcp.telemetry import inject_trace_context
 from fastmcp.tools.base import InputRequiredToolResult, Tool, ToolResult
 from fastmcp.utilities.components import FastMCPComponent, get_fastmcp_metadata
@@ -1117,6 +1123,38 @@ class ProxyProvider(Provider):
         if not matching:
             return None
         return max(matching, key=version_sort_key)
+
+    # -------------------------------------------------------------------------
+    # Skill methods
+    # -------------------------------------------------------------------------
+
+    async def _list_skills(self) -> Sequence[MCPSkill]:
+        """List the remote server's Skills entries, following every page."""
+        meta = _session_request_meta(_forwardable_request_meta(get_context()))
+        skills: list[MCPSkill] = []
+        cursor: str | None = None
+        seen: set[str] = set()
+        try:
+            client = await self._get_client()
+            async with client:
+                while True:
+                    request = ListSkillsRequest(
+                        params=ListSkillsParams(cursor=cursor, meta=meta)
+                    )
+                    page = await client._await_with_session_monitoring(
+                        client.session.send_request(request, ListSkillsResult)
+                    )
+                    skills.extend(page.skills)
+                    if not page.next_cursor or page.next_cursor in seen:
+                        return skills
+                    seen.add(page.next_cursor)
+                    cursor = page.next_cursor
+        except MCPError as e:
+            if e.error.code == METHOD_NOT_FOUND:
+                return []
+            raise
+        except _PROXY_TRANSPORT_ERRORS as error:
+            raise _proxy_upstream_error(error) from error
 
     # -------------------------------------------------------------------------
     # Task methods

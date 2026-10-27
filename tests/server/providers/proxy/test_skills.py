@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from contextlib import nullcontext
 from pathlib import Path
 
@@ -17,7 +18,7 @@ from fastmcp.server.middleware.caching import ResponseCachingMiddleware
 from fastmcp.server.providers.aggregate import ProviderErrorStrategy
 from fastmcp.server.providers.proxy import ProxyClient, ProxyProvider
 from fastmcp.server.providers.skills import SkillsDirectoryProvider
-from fastmcp.skills import Skill, SkillsClientExtension
+from fastmcp.skills import MCPSkill, Skill, SkillsClientExtension
 from fastmcp.skills._constants import SKILLS_EXTENSION_ID
 from fastmcp.skills.extension import SkillsExtension
 from fastmcp.skills.provider import SkillCatalog, SkillCatalogProvider
@@ -142,6 +143,23 @@ async def test_follows_backend_pagination() -> None:
         "skill://deploy/SKILL.md",
         "skill://review/SKILL.md",
     ]
+
+
+async def test_subclass_supplies_the_backend_listing() -> None:
+    class ReviewOnly(ProxyProvider):
+        async def _list_skills(self) -> Sequence[MCPSkill]:
+            listed = await super()._list_skills()
+            return [skill for skill in listed if skill.frontmatter.name == "review"]
+
+    upstream = backend(REVIEW, DEPLOY)
+    server = FastMCP("gateway")
+    server.add_provider(
+        ReviewOnly(lambda: ProxyClient(upstream, mode="auto"), skills=True)
+    )
+
+    async with skills_client(server) as client:
+        listed = await client.list_skills()
+    assert [skill.uri for skill in listed] == ["skill://review/SKILL.md"]
 
 
 async def test_local_and_proxied_skills_share_one_catalog() -> None:
