@@ -5,8 +5,10 @@ from __future__ import annotations
 from collections.abc import Sequence
 from contextlib import nullcontext
 from pathlib import Path
+from typing import Any
 
 import pytest
+from mcp.server.context import ServerRequestContext
 from mcp.shared.exceptions import MCPError
 from mcp_types import TextResourceContents
 
@@ -145,21 +147,39 @@ async def test_follows_backend_pagination() -> None:
     ]
 
 
-async def test_subclass_supplies_the_backend_listing() -> None:
-    class ReviewOnly(ProxyProvider):
-        async def _list_skills(self) -> Sequence[MCPSkill]:
-            listed = await super()._list_skills()
-            return [skill for skill in listed if skill.frontmatter.name == "review"]
+async def test_subclass_can_cache_the_backend_listing() -> None:
+    class CountingCatalog(SkillCatalogProvider):
+        lists = 0
 
-    upstream = backend(REVIEW, DEPLOY)
+        async def _list_skill_entries(
+            self, context: ServerRequestContext[Any, Any]
+        ) -> Sequence[MCPSkill]:
+            self.lists += 1
+            return await super()._list_skill_entries(context)
+
+    class CachingProxy(ProxyProvider):
+        cached: Sequence[MCPSkill] | None = None
+
+        async def _list_skills(self) -> Sequence[MCPSkill]:
+            if self.cached is None:
+                self.cached = await super()._list_skills()
+            return self.cached
+
+    catalog = CountingCatalog([REVIEW])
+    upstream = FastMCP("backend", providers=[catalog])
     server = FastMCP("gateway")
     server.add_provider(
-        ReviewOnly(lambda: ProxyClient(upstream, mode="auto"), skills=True)
+        CachingProxy(lambda: ProxyClient(upstream, mode="auto"), skills=True)
     )
 
     async with skills_client(server) as client:
-        listed = await client.list_skills()
-    assert [skill.uri for skill in listed] == ["skill://review/SKILL.md"]
+        first = await client.list_skills()
+    async with skills_client(server) as client:
+        second = await client.list_skills()
+
+    assert [skill.uri for skill in first] == ["skill://review/SKILL.md"]
+    assert second == first
+    assert catalog.lists == 1
 
 
 async def test_local_and_proxied_skills_share_one_catalog() -> None:
