@@ -133,6 +133,14 @@ publication is unavailable through this entrypoint. Public GitHub mutations and
 bot-owned label behavior remain unchanged. Independent probes for arbitrary
 reports still require the reproduction handler; intake does not manufacture them.
 
+GitHub PR events refresh referenced issues; they do not request a review of the
+PR itself. The webhook excludes drafts, PR descriptions without an issue-reference
+hint (`#` or a repository issue URL), and edits that do not change the description.
+Intake resolves references and discards closed issues and references to other PRs.
+Events for the same GitHub item are limited to one launch per sixty seconds;
+intake fetches current GitHub state when it starts. Slack announces the issues
+accepted for triage only when their controller starts. Empty intake runs stay quiet.
+
 Successful receipts defer unchanged issue metadata for sixty minutes by default.
 This is a cooldown, not a claim that associated PR history is unchanged. Full
 history and PR revisions are refreshed when an item is processed, and again before

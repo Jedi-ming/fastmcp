@@ -93,14 +93,15 @@ case "${1:-}" in
       jq -n --slurpfile runtime "$runtime" --arg controller "$controller" --arg deployment "$deployment" --arg kind "$kind" '
         ($kind == "issue") as $issue |
         {name:("fastmcp-triage-on-github-" + $kind),
-         description:"Start bounded agentic triage intake for new or changed fastmcp work; no GitHub writes",
+         description:(if $issue then "Consider changed FastMCP issues for bounded triage" else "Refresh issues referenced by ready FastMCP PRs; this does not review the PR itself" end),
          enabled:true,
-         trigger:{type:"event",posture:"Reactive",threshold:1,within:0,
+         trigger:{type:"event",posture:"Reactive",threshold:1,within:60,
            expect:(if $issue then ["fastmcp.github.issues.opened","fastmcp.github.issues.reopened","fastmcp.github.issues.edited"]
                    else ["fastmcp.github.pull_request.opened","fastmcp.github.pull_request.reopened","fastmcp.github.pull_request.synchronize","fastmcp.github.pull_request.edited","fastmcp.github.pull_request.ready_for_review"] end),
-           match:{"github.repository":"PrefectHQ/fastmcp","github.kind":$kind,"github.sender.type":"User"},
-           match_related:{},after:[],for_each:[]},
-         actions:[{type:"run-deployment",source:"selected",deployment_id:$deployment,job_variables:null,
+           match:({"github.repository":"PrefectHQ/fastmcp","github.kind":$kind,"github.sender.type":"User"}
+             + if $issue then {} else {"github.draft":"false","github.issue-reference":"true","github.relevant-change":"true"} end),
+           match_related:{},after:[],for_each:["prefect.resource.id"]},
+         actions:[{type:"run-deployment",source:"selected",deployment_id:$deployment,job_variables:null,schedule_after:60,
            parameters:{controller_id:$controller,runtime:$runtime[0],
              config:({queue:"events",max_items:3} + {(if $issue then "issues" else "pull_requests" end):
                {"__prefect_kind":"json",value:{"__prefect_kind":"jinja",template:"[{{ event.resource[\"github.number\"]|int }}]"}}})}}],
@@ -108,15 +109,15 @@ case "${1:-}" in
       echo "automation $kind $(upsert automations "$scratch/automation-$kind.json")"
     done
     if [[ -n $notify ]]; then
-      jq -n --arg deployment "$deployment" --arg notify "$notify" '
-        {name:"fastmcp-triage-run-started",description:"Announce each agentic triage intake run with a link",enabled:true,
+      jq -n --arg controller "$controller" --arg notify "$notify" '
+        {name:"fastmcp-triage-run-started",description:"Announce issues admitted to the triage controller; empty intake runs stay quiet",enabled:true,
          trigger:{type:"event",posture:"Reactive",threshold:1,within:0,expect:["prefect.flow-run.Running"],
-           match:{"prefect.resource.id":"prefect.flow-run.*"},
-           match_related:{"prefect.resource.role":"deployment","prefect.resource.id":("prefect.deployment." + $deployment)},
-           after:[],for_each:[]},
+           match:{"prefect.resource.id":"prefect.flow-run.*","prefect.resource.name":"fastmcp-stack-intake-*"},
+           match_related:{"prefect.resource.role":"deployment","prefect.resource.id":("prefect.deployment." + $controller)},
+           after:[],for_each:["prefect.resource.id"]},
          actions:[{type:"send-notification",block_document_id:$notify,
-           subject:"fastmcp triage started",
-           body:"fastmcp triage started: {{ flow_run.name }}\nissues {{ flow_run.parameters.config.issues|default([]) }} · PRs {{ flow_run.parameters.config.pull_requests|default([]) }}\n{{ flow_run|ui_url }}"}],
+           subject:"",
+           body:"Accepted for triage: {% set ns = namespace(sep=\"\") %}{% for group in flow_run.parameters.batch.groups %}{% for item in group[\"items\"] %}{{ ns.sep }}<https://github.com/PrefectHQ/fastmcp/issues/{{ item.issue_number }}|#{{ item.issue_number }}>{% set ns.sep = \", \" %}{% endfor %}{% endfor %}\n<{{ flow_run|ui_url }}|Follow triage>"}],
          actions_on_trigger:[],actions_on_resolve:[]}' > "$scratch/automation-notify.json"
       echo "automation notify $(upsert automations "$scratch/automation-notify.json")"
     fi
