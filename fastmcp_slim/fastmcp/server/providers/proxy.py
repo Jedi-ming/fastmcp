@@ -26,6 +26,7 @@ from mcp.server.context import ServerRequestContext
 from mcp.shared.exceptions import MCPError
 from mcp.shared.inbound import x_mcp_header_map
 from mcp_types import (
+    INVALID_PARAMS,
     METHOD_NOT_FOUND,
     BlobResourceContents,
     ElicitRequestFormParams,
@@ -63,6 +64,9 @@ from fastmcp.server.providers.aggregate import ProviderErrorStrategy
 from fastmcp.server.providers.base import Provider
 from fastmcp.server.server import FastMCP
 from fastmcp.skills.models import (
+    GetSkillParams,
+    GetSkillRequest,
+    GetSkillResult,
     ListSkillsParams,
     ListSkillsRequest,
     ListSkillsResult,
@@ -1155,6 +1159,24 @@ class ProxyProvider(Provider):
             raise
         except _PROXY_TRANSPORT_ERRORS as error:
             raise _proxy_upstream_error(error) from error
+
+    async def _get_skill(self, uri: str) -> MCPSkill | None:
+        """Ask the remote server for one Skills entry by URI."""
+        meta = _session_request_meta(_forwardable_request_meta(get_context()))
+        request = GetSkillRequest(params=GetSkillParams(uri=uri, meta=meta))
+        try:
+            client = await self._get_client()
+            async with client:
+                result = await client._await_with_session_monitoring(
+                    client.session.send_request(request, GetSkillResult)
+                )
+        except MCPError as e:
+            if e.error.code in (INVALID_PARAMS, METHOD_NOT_FOUND):
+                return None
+            raise
+        except _PROXY_TRANSPORT_ERRORS as error:
+            raise _proxy_upstream_error(error) from error
+        return result.skill
 
     # -------------------------------------------------------------------------
     # Task methods

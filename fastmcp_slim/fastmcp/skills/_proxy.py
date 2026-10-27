@@ -2,33 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncGenerator, Sequence
-from contextlib import asynccontextmanager
+from collections.abc import Sequence
 from typing import Any
 
 from mcp.server.context import ServerRequestContext
-from mcp.shared.exceptions import MCPError
-from mcp_types import INVALID_PARAMS, METHOD_NOT_FOUND
 
-from fastmcp.client.client import Client
 from fastmcp.server.dependencies import get_context
 from fastmcp.server.providers.base import Provider
-from fastmcp.server.providers.proxy import (
-    _PROXY_TRANSPORT_ERRORS,
-    ProxyProvider,
-    ProxyResource,
-    ProxyTemplate,
-    _forwardable_request_meta,
-    _proxy_upstream_error,
-    _session_request_meta,
-)
+from fastmcp.server.providers.proxy import ProxyProvider, ProxyResource, ProxyTemplate
 from fastmcp.skills._routing import _may_read, _resolve_read
-from fastmcp.skills.models import (
-    GetSkillParams,
-    GetSkillRequest,
-    GetSkillResult,
-    MCPSkill,
-)
+from fastmcp.skills.models import MCPSkill
 
 
 class _ProxiedSkills:
@@ -81,31 +64,8 @@ class _ProxiedSkills:
         state = get_context()._request_state
         key = f"_fastmcp_proxied_skill:{id(self._provider)}:{uri}"
         if key not in state:
-            state[key] = await self._get_backend(uri)
+            state[key] = await self._provider._get_skill(uri)
         return state[key]
-
-    @asynccontextmanager
-    async def _client(self) -> AsyncGenerator[Client]:
-        try:
-            client = await self._provider._get_client()
-            async with client:
-                yield client
-        except _PROXY_TRANSPORT_ERRORS as error:
-            raise _proxy_upstream_error(error) from error
-
-    async def _get_backend(self, uri: str) -> MCPSkill | None:
-        meta = _session_request_meta(_forwardable_request_meta(get_context()))
-        request = GetSkillRequest(params=GetSkillParams(uri=uri, meta=meta))
-        async with self._client() as client:
-            try:
-                result = await client._await_with_session_monitoring(
-                    client.session.send_request(request, GetSkillResult)
-                )
-            except MCPError as error:
-                if error.error.code in (INVALID_PARAMS, METHOD_NOT_FOUND):
-                    return None
-                raise
-        return result.skill
 
     async def _is_served(self, entry: MCPSkill) -> bool:
         if entry.resources == "dynamic":
