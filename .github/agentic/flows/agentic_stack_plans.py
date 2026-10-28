@@ -96,7 +96,11 @@ supplied review-issue skill when assignment is relevant, but only recommend assi
 Missing evidence returns one precise request. Low-value leaf fixes may return prune with
 the actual tradeoff even when the bug is real. Preserve human interventions and existing
 label workflow ownership. A tractable defect in an established supported contract may
-return reproduce. A documentation correction needs an executable supported setup.
+return reproduce. Assessment establishes whether reproduction is worthwhile; it need not
+execute the report. A missing FastMCP installation in this agent is not environment_failure:
+the reproduction role owns `uv sync` and the independent failing probe. Route a credible
+current-source defect to reproduce with the contract to verify, even when the report names
+an older release. A documentation correction needs an executable supported setup.
 Use each open PR's revision_evidence: current_diff and changes_since_review bind code
 and reviews to exact commits. Inspect later patches before repeating an older finding;
 no author reply or unresolved review status does not establish an unfixed current defect.
