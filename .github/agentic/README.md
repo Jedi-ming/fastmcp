@@ -24,12 +24,14 @@ the original parent and finalizer runs and rechecks current GitHub evidence befo
 settling the intake. Failed or stale results are not reused. The current execution
 engine cannot skip a root agent by omitting an optional plan input, so partial
 assessment reuse is not used in the connected plan. Transient verification retries
-remain within the same assessment run. The older fix-stack path retains its
-individual role cache while it is migrated separately.
+remain within the same assessment run. Preparation and independent review retain their individual role caches. Fix batches
+use the same connected assessment and reproduction as review and MRE batches; the
+standalone assessment and reproduction plans are no longer dispatched by the controller.
 
-The first milestone is complete triage: collect evidence, assess it, execute the
-appropriate verification, and return an actionable review queue. Fix stacks are a
-later capability. Classification alone does not satisfy this milestone.
+The draft-fix pilot accepts a manually selected issue in `fix` mode. Only a
+connected reproduction of a supported defect can reach preparation, full validation,
+independent review and deterministic draft publication. A review queue alone does
+not establish that this write path produced an accepted fix.
 
 A manually selected batch contains at most six issues in two coherent groups.
 `gh` collects existing labels, full issue discussion, all-state related PRs,
@@ -65,12 +67,14 @@ two-hour window. Haiku is configured as a comparison candidate, not an automatic
 fallback. Missing telemetry remains unknown; these are execution bounds, not a
 hard token or dollar cap.
 
-Qualified patches become two- or three-layer draft GitHub Stacks. Each layer is
+One qualified patch becomes an independent draft PR. Two or three coherent patches
+become a draft GitHub Stack through the same validation, review and publication path. Each layer is
 validated on its actual parent with the full FastMCP suite and static checks.
 Immutable Prefect artifacts retain the exact commits, patches, credit and review.
 Publication rechecks ownership, issue history, holds and branch heads; uncertain
-writes reconcile with existing GitHub objects. A single useful patch is retained
-without manufacturing a second layer. Other results are grouped as existing-work
+writes reconcile with existing GitHub objects. Validation retains per-layer commands, exit codes, elapsed time and bounded output.
+Stack validation uses the same unprivileged process boundary as contribution
+verification before fetching, installing or executing candidate repository code. Other results are grouped as existing-work
 reviews, evidence, pruning proposals, maintainer decisions or operational failures.
 
 Fork PRs are reviewed in place. Adoption and supersession require a maintainer's
@@ -188,6 +192,12 @@ Reuse the operation ID if the launch response is uncertain. Inspect the intake's
 coverage and review queue artifacts and its linked controller's results. This
 command does not enable recurring runs.
 
+GitHub Actions owns labels, duplicate marking and closure cooldowns. Prefect owns
+bounded contract assessment, executable reproduction/contribution verification,
+and the explicitly selected draft-fix pilot. Existing GitHub investigation comments
+are supplied as evidence; Prefect verifies claims needed for a patch and does not
+publish a second investigation comment or close an issue.
+
 ## Local verification
 
 From this directory:
@@ -239,8 +249,9 @@ published role flow/version IDs, validator deployment ID, contribution verificat
 deployment ID (`verification_id`) and controller source SHA. Once the named batch
 is configured for connected triage, also supply `triage_plan` (flow and version),
 `triage_verify_id`, and `triage_finalize_id`; all three must be supplied together.
-The connected plan handles `mre` and `review` items. The existing bounded stack
-controller continues to handle explicit `fix` batches. Once the named batch
+The connected plan handles assessment and verification/reproduction for `mre`,
+`review` and `fix` items. The bounded controller continues a successful `fix`
+reproduction through preparation, validation, independent review and publication. Once the named batch
 and its external effects are approved:
 
 ```sh

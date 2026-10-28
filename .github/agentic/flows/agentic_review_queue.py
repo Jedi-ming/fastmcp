@@ -32,7 +32,7 @@ def review_markdown(result: dict) -> str:
         "decisions": "Maintainer decisions",
         "operational": "Operational attention",
         "unchanged": "No action this pass",
-        "stacks": "Draft fix stacks",
+        "stacks": "Draft fixes",
     }
     lines = [
         f"# FastMCP triage: {plain(result['batch_id'])}",
@@ -53,6 +53,21 @@ def review_markdown(result: dict) -> str:
                 else plain(item.get("group", "Group"))
             )
             lines.extend([f"### {label}", ""])
+            for pr_number in item.get("pull_requests", []):
+                lines.extend(
+                    [
+                        f"[Draft PR #{pr_number}](https://github.com/PrefectHQ/fastmcp/pull/{pr_number})",
+                        "",
+                    ]
+                )
+            if item.get("validation_run_id"):
+                lines.extend(
+                    [
+                        "Validated by run " + plain(item["validation_run_id"]) + ". "
+                        "Independent review: " + plain(item.get("review_run_id")) + ".",
+                        "",
+                    ]
+                )
             assessment = item.get("assessment", item)
             reason = assessment.get("reason") or item.get("detail") or item.get("error")
             if reason:

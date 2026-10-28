@@ -210,6 +210,15 @@ def reconcile_stack(
         published.append((layer, manifest))
 
     check()
+    receipt = {
+        "status": "published",
+        "pull_requests": numbers,
+        "pr_urls": links,
+        "spec_sha256": artifact["spec_sha256"],
+        "bundle_sha256": artifact["bundle_sha256"],
+    }
+    if len(numbers) == 1:
+        return receipt
     found: dict[int, dict] = {}
     for number in numbers:
         for stack in github.pages(f"{prefix}/stacks?pull_request={number}"):
@@ -229,11 +238,7 @@ def reconcile_stack(
     verify_stack(stack, spec, numbers, artifact["layers"])
     check()
     return {
-        "status": "published",
+        **receipt,
         "stack_number": stack["number"],
         "stack_api_url": stack["url"],
-        "pull_requests": numbers,
-        "pr_urls": links,
-        "spec_sha256": artifact["spec_sha256"],
-        "bundle_sha256": artifact["bundle_sha256"],
     }

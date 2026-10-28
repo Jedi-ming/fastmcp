@@ -16,7 +16,6 @@ from prefect.client.schemas.objects import State
 from prefect.context import FlowRunContext
 from prefect.states import Completed
 
-from flows.agentic_baseline import review_existing
 from flows.agentic_freshness import revalidate
 from flows.agentic_intake import policy_outcome, route_intake
 from flows.agentic_native_triage import run_native_triage
@@ -218,6 +217,13 @@ def publish(
         result = reconcile_stack(
             repository, artifact, GitHub(token), guard, environment
         )
+    result.update(
+        {
+            "validation_run_id": str(validation_run_id),
+            "review_run_id": review_run_id,
+            "controller_run_id": str(owner),
+        }
+    )
     record.fn(owner, f"{batch.id}-{spec.group}-published", result)
     return result
 
@@ -380,77 +386,39 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                 if projected is None:
                     projected = assessment_context(item)
                     record(owner, assessment_key, projected)
-                if requested.mode != "fix":
-                    destination, result, native_calls = run_native_triage(
-                        owner,
-                        Admission(
-                            batch=batch,
-                            group=item_group,
-                            requested=requested,
-                            runtime=runtime,
-                            item=item,
-                            request={
-                                "instructions": bundle,
-                                "context": {**projected, "mode": requested.mode},
-                            },
-                            reproduce_request={
-                                "instructions": item_bundles["reproduce_instructions"],
-                                "context": projected,
-                            },
-                        ),
-                    )
+                destination, result, native_calls = run_native_triage(
+                    owner,
+                    Admission(
+                        batch=batch,
+                        group=item_group,
+                        requested=requested,
+                        runtime=runtime,
+                        item=item,
+                        request={
+                            "instructions": bundle,
+                            "context": {**projected, "mode": requested.mode},
+                        },
+                        reproduce_request={
+                            "instructions": item_bundles["reproduce_instructions"],
+                            "context": projected,
+                        },
+                    ),
+                )
+                calls.extend(native_calls)
+                if not (
+                    requested.mode == "fix"
+                    and destination == "evidence"
+                    and result.get("decision") == "reproduced"
+                    and route["route"] != "review_existing"
+                ):
                     bins[destination].append(result)
-                    calls.extend(native_calls)
                     continue
-                assessment, _ = ask(
-                    "assess", bundle, projected, f"issue-{number}-assess"
-                )
-                item["assessment"] = assessment
-                if (
-                    route["route"] == "review_existing"
-                    and assessment["decision"] == "existing_review"
-                ):
-                    destination, review = review_existing(
-                        owner,
-                        batch,
-                        item_group,
-                        runtime,
-                        item,
-                        requested.verification_probes,
-                        bundle,
-                        ask,
-                    )
-                    bins[destination].append(review)
-                    continue
-                if (
-                    assessment["decision"] != "reproduce"
-                    or route["route"] == "review_existing"
-                    or requested.mode == "review"
-                ):
-                    destination = {
-                        "prune": "pruning",
-                        "evidence_needed": "evidence",
-                        "existing_review": "existing_review",
-                        "skip": "unchanged",
-                        "environment_failure": "operational",
-                    }.get(assessment["decision"], "decisions")
-                    bins[destination].append({"issue_number": number, **assessment})
-                    continue
-                reproduction, _ = ask(
-                    "reproduce",
-                    item_bundles["reproduce_instructions"],
-                    item,
-                    f"issue-{number}-reproduce",
-                )
-                item["reproduction"] = reproduction
-                if reproduction["decision"] != "reproduced" or requested.mode == "mre":
-                    destination = (
-                        "operational"
-                        if reproduction["decision"] == "environment_failure"
-                        else "evidence"
-                    )
-                    bins[destination].append({"issue_number": number, **reproduction})
-                    continue
+                item["assessment"] = result["assessment"]
+                item["reproduction"] = {
+                    key: value
+                    for key, value in result.items()
+                    if key not in {"issue_number", "assessment"}
+                }
                 prepared, _ = ask(
                     "prepare",
                     bundles["prepare_instructions"],
@@ -483,15 +451,7 @@ def run_batch(batch: Batch, runtime: Runtime) -> dict:
                         "detail": str(error)[:1000],
                     }
                 )
-        if len(ready) < 2:
-            for item in ready:
-                bins["decisions"].append(
-                    {
-                        "issue_number": item["evidence"]["issue"]["number"],
-                        "reason": "A scoped patch is retained, but no coherent second layer is ready",
-                        "preparation": item["preparation"],
-                    }
-                )
+        if not ready:
             record(
                 owner,
                 f"{batch.id}-{group.name}-outcome",
